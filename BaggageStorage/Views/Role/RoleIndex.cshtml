@@ -1,0 +1,170 @@
+﻿@using BaggageStorage.Classes
+@inject IViewLocalizer Localizer
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var title = Localizer["Справочник ролей для клиента"].Value;
+    var storageKey = "storage_roles_grid";
+}
+
+<script>
+    var role = {
+        dxGrid: undefined,
+        roleBeforeSend: function (query, request) {
+            if (query == "insert" || query == "update") {
+                var obj = JSON.parse(request.data.values);
+                obj["customerId"] = $("#selectBoxCustomer_Roles").dxSelectBox('instance').option('value');
+                request.data.values = JSON.stringify(obj);
+            }
+
+        },
+        grid_ContentReady: function (e) {
+            role.dxGrid.focus(role.dxGrid.getCellElement(0, 'name'));
+        },
+        grid_CellClick: function (e) {
+            if ($(e.cellElement).parent().index() <= role.dxGrid.getVisibleRows().length - 1 && role.dxGrid.getController("editing").isEditing() == false)
+                role.dxGrid.focus(e.cellElement);
+        },
+        closePortlet: function () {
+            $("#portlet_role").remove();
+            $("#tab-opened-portlet-role").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+        grid_refresh: function () {
+            role.dxGrid.refresh();
+        },
+        customerChanged: function (sender) {
+
+            var customerId = "";
+
+            if (sender.selectedItem != undefined) {
+                customerId = sender.selectedItem.id;
+            }
+
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "loadParams": {
+                        "customerId": customerId
+                    },
+                    "onBeforeSend": role.roleBeforeSend,
+                    "loadUrl": "/api/role/",
+                    "insertUrl": "/api/role/",
+                    "deleteUrl": "/api/role/",
+                    "updateUrl": "/api/role/"
+                })
+            };
+
+            role.dxGrid.option("dataSource", store);
+        }
+    }
+</script>
+
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption" style="padding:0px; padding-top:5px;">
+            <div style="display:inline-block">
+                <i class=" icon-layers font-green portlet-header-icon" style="position:relative; top:-10px;"></i>
+                <span class="caption-subject font-main-color bold uppercase" style="position:relative; top:-10px; margin-right:20px">@title</span>
+
+                 @(Html.DevExtreme().SelectBox()
+                        .ID("selectBoxCustomer_Roles")
+                        .ElementAttr("style","display:inline-block;")
+                        .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                        .DataSourceOptions(o=>o.Sort("name"))
+                        .DisplayExpr("name")
+                        .ValueExpr("id")
+                        .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                        .OnSelectionChanged("role.customerChanged")
+                        .SearchEnabled(true)
+                        )
+            </div>                  
+                        
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:role.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:role.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+        <div class="full-height-content-body ">
+
+            <input type="hidden" id="role-storage-name" value='["@storageKey"]' />
+
+            @(Html.DevExtreme().DataGrid()
+                .ID("gridRolesContainer")
+                .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                .ShowBorders(true)
+                .ShowRowLines(true)
+                .SearchPanel(searchPanel => searchPanel.Visible(true))
+                .StateStoring(s => s
+                                .Enabled(true)
+                                .Type(StateStoringType.LocalStorage)
+                                .StorageKey(storageKey)
+                            )
+                .OnCellPrepared("table_cellPrepared")
+                .OnCellClick("role.grid_CellClick")
+                .OnContentReady("role.grid_ContentReady")
+                .Export(e => e
+                    .Enabled(true)
+                    .FileName("Customers"))
+                .HoverStateEnabled(true)
+                .RowAlternationEnabled(true)
+                .Paging(paging => paging.Enabled(true))
+                .StateStoring(s => s
+                    .Enabled(true)
+                    .Type(StateStoringType.LocalStorage)
+                    .StorageKey("storage_roles_grid")
+                )
+                .Pager(p => p
+                    .ShowInfo(true)
+                    .ShowNavigationButtons(true)
+                    .ShowPageSizeSelector(true)
+                    .AllowedPageSizes(new int[] { 25, 50, 100 })
+                )
+                .Editing(editing =>
+                {
+                    editing.AllowAdding(true);
+                    editing.AllowDeleting(true);
+                    editing.Mode(GridEditMode.Row);
+                    editing.AllowUpdating(true);
+                })
+                .Columns(columns =>
+                {
+                    columns.Add()
+                        .DataField("alias")
+                        .Caption(Localizer["Название роли"].Value);
+                })
+            )
+            
+        </div>
+    </div>
+</div>
+
+
+<script>
+    $(function () {
+        role.dxGrid = $("#gridRolesContainer").dxDataGrid("instance");
+        role.dxGrid.option("dataSource", []);
+
+        $('#portlet_role .dx-toolbar').hide();
+        var a = $('#portlet_role .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_role .portlet-title');
+        
+
+        $(window).resize(function () {
+            role.dxGrid.option("height", parseInt($("#portlet_role .height-as-parent").css('min-height')) - 63);
+        });
+    });
+</script>

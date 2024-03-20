@@ -1,0 +1,408 @@
+﻿@using BaggageStorage.Classes
+@inject IViewLocalizer Localizer
+
+@{
+    var customerId = User.Identity.GetCustomerId();
+
+    Layout = null;
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_users_grid";
+
+    var title = Localizer["Справочник пользователей клиента"].Value;
+}
+
+
+<script>
+    var user = {
+        rolesObject: undefined,
+        editedUserId: undefined,
+        dxGrid: undefined,
+        dxCustomers: undefined,
+
+        grid_ContentReady: function (e) {
+
+            user.dxGrid.focus(user.dxGrid.getCellElement(0, 'firstName'));
+        },
+
+         table_cellPrepared: function (e) {
+
+             if (e.rowType === "data" && e.column.dataField == 'roles') {
+
+                var currentValue = e.displayValue;
+                e.cellElement.text(currentValue.substr(currentValue.indexOf('_') + 1));
+            }
+
+            if (e.rowType === "data" && e.column.command === "edit") {
+                var isEditing = e.row.isEditing,
+                    $links = e.cellElement.find(".dx-link");
+
+                $links.text("");
+
+                if (isEditing) {
+                    $links.filter(".dx-link-save").addClass("dx-icon-save");
+                    $links.filter(".dx-link-cancel").addClass("dx-icon-revert");
+                } else {
+                    $links.filter(".dx-link-edit").addClass("dx-icon-edit");
+                    $links.filter(".dx-link-delete").addClass("dx-icon-trash");
+                    $links.filter(".dx-link-add").addClass("dx-icon-add");
+                }
+            }
+
+        },
+
+        grid_CellClick: function (e) {
+            if ($(e.cellElement).parent().index() <= user.dxGrid.getVisibleRows().length - 1 && user.dxGrid.getController("editing").isEditing()==false)
+                user.dxGrid.focus(e.cellElement);
+        },
+
+        customerChanged: function (sender) {
+
+            user.dxGrid.option("dataSource", "");
+
+            var customerId = "";
+
+            if (sender.selectedItem) {
+
+                customerId = sender.selectedItem.id;
+
+                var store = {
+                    "store": DevExpress.data.AspNet.createStore({
+                        "key": "id",
+                        "loadParams": {
+                            "customerId": customerId
+                        },
+                        "onBeforeSend": userBeforeSend,
+                        "loadUrl": "/api/user", "insertUrl": "/api/user", "updateUrl": "/api/user", "deleteUrl": "/api/user"
+                    })
+                };
+
+                user.dxGrid.option("dataSource", store);
+
+            }
+        },
+
+        closePortlet: function () {
+            $("#portlet_user").remove();
+            $("#tab-opened-portlet-user").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        grid_refresh: function () {
+            user.dxGrid.refresh();
+        },
+    }
+
+    var getRoleListByUser = function (userId) {
+        var o = new DevExpress.data.CustomStore({
+            loadMode: "raw",
+            key: "ID",
+            load: function () {
+                var customerId = user.dxCustomers.option('value');
+                return $.getJSON("/api/user/getrolesbyuserid?userId=" + userId + "&customerId=" + customerId);
+            }
+        });
+
+        o.on("loaded", function () {
+            setTimeout(function () {
+                $(".dx-state-readonly").removeClass("dx-state-readonly");
+            }, 200);
+        });
+        return o;
+    };
+
+    function userEditingStart(e) {
+        user.editedUserId = e.data.id;
+    }
+
+    function userGroupBeforeSend(query, request) {
+        if (query == "insert" || query == "update") {
+            var obj = JSON.parse(request.data.values);
+            obj["customerId"] = user.dxCustomers.option('value');
+            request.data.values = JSON.stringify(obj);
+        }
+    }
+
+    function userBeforeSend(query, request) {
+        if (query == "insert" || query == "update") {
+            var obj = JSON.parse(request.data.values);
+            obj["customerId"] = user.dxCustomers.option('value');
+            request.data.values = JSON.stringify(obj);
+        }
+
+    }
+
+    function calculateCellRolesValue(data) {
+
+        if (data.roles == undefined)
+            return '';
+
+        var a = new Array();
+        data.roles.forEach(function (e) { a.push(e.roleName.substring(e.roleName.indexOf('_') + 1)) });
+        return a.join(',');
+    }
+
+
+    function table_UserEditorPrepared(e) {
+
+        if (e.parentType === 'dataRow' && e.dataField === 'roles') {
+
+            user.rolesObject = e;
+            var userId = "";
+            if (typeof (e.row.key) != "object")
+                userId = e.row.key;
+
+            e.editorElement.dxDropDownBox({
+                value: e.value,
+                showClearButton: false, // not working
+                valueExpr: "roles",
+                placeholder: "",
+                dropDownOptions: {
+                    width: 600
+                },
+                showClearButton: true,
+                dataSource: getRoleListByUser(userId),
+                contentTemplate: function (e) {
+                    var value = e.component.option("value");
+
+                    $dataGrid = $("<div>").dxDataGrid({
+                        dataSource: e.component.option("dataSource"),
+                        showColumnLines: false,
+                        focusStateEnabled: false,
+                        columns: [
+                            { dataField: "id", caption: "id", width: 0 },
+                            { dataField: "name", caption: "@Html.Raw(Localizer["Роль"].Value)"},
+                            {
+                                dataField: "enabled",
+                                caption: "@Html.Raw(@Localizer["Включена"].Value)",
+                                cellTemplate: function (container, options) {
+
+                                    container.addClass("user-cell");
+                                    $("<div />").dxCheckBox({
+                                        value: options.data.enabled
+                                    }).appendTo(container);
+                                },
+                                dataType: "boolean", calculateCellValue: function (rowData) {
+                                    return rowData.enabled == true;
+                                }
+                            }
+                        ],
+                        onCellClick: function (e) {
+
+                            var tmp = new Array();
+                            var rolesData = new Array();
+
+                            $(".user-cell .dx-checkbox-checked").each(function () {
+                                var roleId = $(this).parents('tr').find('td:eq(0)').text();
+                                var roleName = $(this).parents('tr').find('td:eq(1)').text();
+
+                                tmp.push(roleName);
+
+                                var o = new Object();
+                                o.userId = user.editedUserId;
+                                o.id = roleId; // roleId
+                                //o.roleName = roleName;
+                                rolesData.push(o);
+                            });
+                            // set displayText for Roles
+                            $(".dx-datagrid-rowsview .dx-dropdowneditor-input-wrapper .dx-texteditor-input").val(tmp);
+
+                            // change rolesObject
+                            user.rolesObject.setValue(rolesData);
+                        },
+                        hoverStateEnabled: false,
+                        scrolling: { mode: "infinite" },
+                        height: 265
+                    });
+
+
+                    return $dataGrid;
+                }
+            });
+
+            // remove clear button
+            $(e.editorElement).find(".dx-clear-button-area").remove();
+
+            e.cancel = true;
+        }
+    }
+
+
+
+    var op = undefined;
+
+    function PasswordCellTemplate(container, options) {
+        $(container).dxTextBox({
+            onValueChanged: function (e) { options.setValue(e.value); },
+            mode: "password",
+            showClearButton: true
+        });
+
+    }
+
+    function table_UserRowUpdating(e) {
+        if (e.newData.roles == undefined) {
+            var r = new Array();
+            e.oldData.roles.forEach(function (role) {
+                var d = new Object();
+                d.userId = user.editedUserId;
+                d.id = role.roleId;
+                r.push(d);
+            });
+            user.rolesObject.setValue(r);
+        }
+
+        if (e.newData.password != undefined && e.newData.confirmPassword != undefined) {
+            if (e.newData.password != e.newData.confirmPassword) {
+                toastr["error"]("@Localizer["Пароли не совпадают"].Value");
+                e.cancel = true;
+            }
+        }
+    }
+</script>
+
+
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption" style="padding:0px; padding-top:5px;">
+
+            <div style="display:inline-block">
+                <i class=" icon-layers font-green portlet-header-icon" style="position:relative; top:-10px;"></i>
+                <span class="caption-subject font-main-color bold uppercase" style="position:relative; top:-10px; margin-right:20px">@title</span>
+
+                @(Html.DevExtreme().SelectBox()
+                                .ID("selectBoxCustomer_Users")
+                                .ElementAttr("style", "display:inline-block;")
+                                .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                                .DataSourceOptions(o => o.Sort("name"))
+                                .DisplayExpr("name")
+                                .ValueExpr("id")
+                                .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                .OnSelectionChanged("user.customerChanged")
+                                .SearchEnabled(true)
+                )
+            </div>
+
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:user.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:user.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+        <div class="full-height-content-body ">
+
+            @(Html.DevExtreme().DataGrid()
+                                    .ID("users-grid")
+                                    .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                                    .ShowBorders(true)
+                                    .ShowRowLines(true)
+                                    .SearchPanel(searchPanel => searchPanel.Visible(true).Width(200))
+                                    .OnCellPrepared("user.table_cellPrepared")
+                                    .OnCellClick("user.grid_CellClick")
+                                    .OnContentReady("user.grid_ContentReady")
+                                    .Export(e => e
+                                        .Enabled(true)
+                                        .FileName("Users"))
+                                    .HoverStateEnabled(true)
+                                    .RowAlternationEnabled(true)
+                                    .OnEditingStart("userEditingStart")
+                                    .Paging(paging => paging.Enabled(true))
+                                    .StateStoring(s => s
+                                        .Enabled(true)
+                                        .Type(StateStoringType.LocalStorage)
+                                        .StorageKey(storageKey)
+                                    )
+                                    .Pager(p => p
+                                        .ShowInfo(true)
+                                        .ShowNavigationButtons(true)
+                                        .ShowPageSizeSelector(true)
+                                        .AllowedPageSizes(new int[] { 25, 50, 100 })
+                                    )
+                                    .OnRowUpdating("table_UserRowUpdating")
+                                    .OnEditorPrepared("table_UserEditorPrepared")
+                                    .Editing(editing =>
+                                    {
+                                        editing.AllowAdding(true);
+                                        editing.AllowDeleting(true);
+                                        editing.Mode(GridEditMode.Form);
+                                        editing.AllowUpdating(true);
+                                    })
+                                    .FilterRow(filterRow => filterRow
+                                            .Visible(true)
+                                            .ApplyFilter(GridApplyFilterMode.Auto)
+                                    )
+                                    .Columns(columns =>
+                                    {
+                                        columns.Add()
+                                            .DataField("firstName")
+                                            .ValidationRules(r => r.AddRequired())
+                                            .Caption(Localizer["Имя"].Value);
+                                        columns.Add()
+                                            .DataField("lastName")
+                                            .ValidationRules(r => r.AddRequired())
+                                            .Caption(Localizer["Фамилия"].Value);
+                                        columns.Add()
+                                            .Visible(false)
+                                            .DataField("userName")
+                                            .ValidationRules(r => r.AddRequired())
+                                            .Caption(Localizer["Логин"].Value);
+                                        columns.Add()
+                                            .Visible(false)
+                                            .DataField("email")
+                                            .ValidationRules(r => r.AddRequired())
+                                            .Caption(Localizer["Емайл"].Value);
+
+                                        columns.Add()
+                                            .DataField("roles")
+                                            .CalculateCellValue("calculateCellRolesValue")
+                                            .Caption(Localizer["Роль"].Value);
+
+                                        columns.Add()
+                                            .DataField("lockoutEnabled")
+                                            .DataType(GridColumnDataType.Boolean)
+                                            .CalculateCellValue(@"function(rowData) { return rowData.lockoutEnabled == true; }")
+                                            .Caption(Localizer["Заблокирован"].Value);
+
+                                        columns.Add()
+                                            .AllowFiltering(false)
+                                            .DataField("password")
+                                            .EditCellTemplate(new JS("PasswordCellTemplate"))
+                                            .Visible(false)
+                                            .Caption(Localizer["Пароль "].Value);
+                                        columns.Add()
+                                            .AllowFiltering(false)
+                                            .DataField("confirmPassword")
+                                            .Visible(false)
+                                            .EditCellTemplate(new JS("PasswordCellTemplate"))
+                                            .Caption(Localizer["Повторить пароль "].Value);
+
+                                    })
+            )
+
+        </div>
+    </div>
+</div>
+
+<script>
+    $(function () {
+        user.dxGrid = $("#users-grid").dxDataGrid("instance");
+        user.dxCustomers = $("#selectBoxCustomer_Users").dxSelectBox('instance');
+
+        $('#portlet_user .dx-toolbar').hide();
+        var a = $('#portlet_user .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_user .portlet-title');
+
+        $(window).resize(function () {
+            user.dxGrid.option("height", parseInt($("#portlet_user .height-as-parent").css('min-height')) - 63);
+        });
+    });
+</script>

@@ -1,0 +1,53 @@
+@using Microsoft.AspNetCore.Builder
+@using Microsoft.AspNetCore.Http.Features
+@using Microsoft.AspNetCore.Localization
+@using Microsoft.Extensions.Options
+@using Microsoft.AspNetCore.Mvc.Localization;
+@using System.Collections;
+
+@using BaggageStorage.Data.Models;
+@using BaggageStorage.Data;
+@using BaggageStorage.Classes;
+
+@inject IViewLocalizer Localizer
+@inject AppDbContext db
+@{
+
+    List<WorkPlace> list = db.WorkPlaces.Where(s => s.CustomerId == User.Identity.GetCustomerId()).ToList();
+} 
+
+
+<script>
+    var workPlace = new Object();
+
+    $(function () {
+        var workPlaceJSON = Cookies.get('workplace');
+        if (workPlaceJSON != undefined) {
+            changeWorkPlace(workPlaceJSON);
+        }
+    });
+
+    function changeWorkPlace(jsonString) {
+        workPlace = JSON.parse(jsonString);
+        $(".workplacename").text(workPlace.Name);
+        Cookies.set('workplace', jsonString);
+    }
+</script>
+
+<div class="dropdown dropdown-language" style="display: inline-block;position: relative;top: -30px;margin-right:50px">
+    <a href="javascript:;" class="dropdown-toggle" data-toggle="dropdown" data-hover="dropdown" data-close-others="true" aria-expanded="true" style="color:#aeb2c4;text-decoration:none">
+        <span class="workplacename">@Localizer["Выберите рабочее место"].Value</span>
+        <i class="fa fa-angle-down"></i>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-default" style="min-width:75px">
+        @foreach (var place in list)
+        {
+        <li>
+            <a href="javascript:changeWorkPlace('@Newtonsoft.Json.JsonConvert.SerializeObject(place)');">
+                @place.Name
+            </a>
+        </li>        
+        }
+    </ul>
+</div>
+

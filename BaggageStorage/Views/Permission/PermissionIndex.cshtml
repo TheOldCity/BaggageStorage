@@ -1,0 +1,337 @@
+﻿@using BaggageStorage.Classes
+@inject IViewLocalizer Localizer
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+
+    var storageKey = "storage_permission_grid";
+    var title = Localizer["Справочник прав доступа"].Value;
+}
+
+<script>
+    var permission = {
+        dxGrid: undefined,
+        dxCustomers: undefined,
+        custId: undefined,
+
+        permissionBeforeSend: function (query, request) {
+            if (query == "insert" || query == "update") {
+                var obj = JSON.parse(request.data.values);
+                obj["customerId"] = permission.dxCustomers.option('value');
+                request.data.values = JSON.stringify(obj);
+            }
+        },
+
+        table_cellPrepared: function (e) {
+
+            if (e.column.dataField == 'roleId') {
+                var currentValue = e.displayValue;
+                if (currentValue != undefined)
+                    e.cellElement.text(currentValue.substr(currentValue.indexOf('_') + 1));
+            }
+
+            if (e.rowType === "data" && e.column.command === "edit") {
+                var isEditing = e.row.isEditing,
+                    $links = e.cellElement.find(".dx-link");
+
+                $links.text("");
+
+                if (isEditing) {
+                    $links.filter(".dx-link-save").addClass("dx-icon-save");
+                    $links.filter(".dx-link-cancel").addClass("dx-icon-revert");
+                } else {
+                    $links.filter(".dx-link-edit").addClass("dx-icon-edit");
+                    $links.filter(".dx-link-delete").addClass("dx-icon-trash");
+                    $links.filter(".dx-link-add").addClass("dx-icon-add");
+                }
+            }
+
+        },
+
+        grid_ContentReady: function (e) {
+            permission.dxGrid.focus(permission.dxGrid.getCellElement(0, 'name'));
+        },
+
+        grid_CellClick: function (e) {
+            if ($(e.cellElement).parent().index() <= permission.dxGrid.getVisibleRows().length - 1 && permission.dxGrid.getController("editing").isEditing() == false)
+                permission.dxGrid.focus(e.cellElement);
+        },
+
+        operationTypeDataArray: undefined,
+
+        operationTypeDataSource : new DevExpress.data.CustomStore({
+                load: function () {
+                    return $.getJSON("/api/operationtype", null, function (data, textStatus, jqXHR) {                        
+                        permission.operationTypeDataArray = data;
+                    });
+                },
+                byKey: function (key) {
+                    var result = '???';
+                    $.each(permission.operationTypeDataArray, function () {
+                        if (key == this.id)
+                            result = this;
+                    });
+                    return result;
+                }
+        }),
+
+        operationDataArray: undefined,
+
+        operationDataSource: new DevExpress.data.CustomStore({
+                load: function () {
+                    return $.getJSON("/api/operation", null, function (data, textStatus, jqXHR) {                 
+                        permission.operationDataArray = data;
+                    });
+                },
+                byKey: function (key) {
+                    var result = '???';
+                    $.each(permission.operationDataArray, function () {
+                        if (key == this.id)
+                            result = this;
+                    });
+                    return result;
+                }
+        }),
+
+        roleDataArray: undefined,
+
+        roleDataSource:  new DevExpress.data.CustomStore({
+            load: function () {
+                return $.getJSON("/api/role?customerId=" + permission.dxCustomers.option('value'), null, function (data, textStatus, jqXHR) {
+                    permission.roleDataArray = data;
+                });
+            },
+            byKey: function (key) {
+                var result = '???';
+                $.each(permission.roleDataArray, function () {
+                    if (key == this.id)
+                        result = this;
+                });
+                return result;
+            }
+        }),
+
+        permissionDataArray: undefined,
+
+        permissionDataSource: new DevExpress.data.CustomStore({
+            load: function () {
+                return $.getJSON("/api/permission?customerId=" + permission.dxCustomers.option('value'), null, function (data, textStatus, jqXHR) {
+                    permission.permissionDataArray = data;
+                });
+            },
+            update: function (key, values) {
+
+                return $.ajax({
+                    url: "/api/permission?customerId=" + permission.dxCustomers.option('value') + "&key=" + encodeURIComponent(key.id) + "&values=" + encodeURIComponent(JSON.stringify(values)),
+                    method: "PUT",
+                    data: values
+                })
+            },
+            byKey: function (key) {
+                var result = '???';
+                $.each(permission.permissionDataArray, function () {
+                    if (key == this.id)
+                        result = this;
+                });
+                return result;
+            }
+        }),
+
+        customerChanged: function () {
+            if (permission.custId == permission.dxCustomers.option('value'))
+                return;
+
+            permission.custId = permission.dxCustomers.option('value');
+            permission.dxGrid.refresh();
+
+            //permission.dxGrid.columnOption('operationTypeId', 'lookup.dataSource', permission.operationTypeDataSource());
+           // permission.dxGrid.columnOption('operationId', 'lookup.dataSource', permission.operationDataSource);
+          //  permission.dxGrid.columnOption('roleId', 'lookup.dataSource', permission.roleDataSource);
+
+            //console.log( permission.dxCustomers.option('value'));
+            //permission.dxGrid.option("dataSource", []);
+
+            //var customerId = permission.dxCustomers.option('value');
+            
+            //var store = {
+            //    "store": DevExpress.data.AspNet.createStore({
+            //        "key": "id",
+            //        "loadParams": {
+            //            "customerId": customerId
+            //        },
+            //        "loadUrl": "/api/role"
+            //    })
+            //};
+
+            //permission.dxGrid.columnOption('roleId', 'lookup.dataSource', store);
+
+            //var store2 = {
+            //    "store": DevExpress.data.AspNet.createStore({
+            //        "key": "id",
+            //        "loadParams": {
+            //            "customerId": customerId
+            //        },
+            //        "changed": function () { debugger },
+            //        "onBeforeSend": permission.permissionBeforeSend,
+            //        "loadUrl": "/api/permission", "insertUrl": "/api/permission", "updateUrl": "/api/permission", "deleteUrl": "/api/permission"
+            //    })
+            //};
+
+            //setTimeout(function () {
+            //    permission.dxGrid.option("dataSource", store2);
+            // }, 7000);
+            
+
+        },
+
+        closePortlet: function () {
+            $("#portlet_permission").remove();
+            $("#tab-opened-portlet-permission").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        grid_refresh: function () {
+            permission.dxGrid.refresh();
+        },
+    };
+</script>
+
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption" style="padding:0px; padding-top:5px;">
+
+            <div style="display:inline-block">
+                <i class=" icon-layers font-green portlet-header-icon" style="position:relative; top:-10px;"></i>
+                <span class="caption-subject font-main-color bold uppercase" style="position:relative; top:-10px; margin-right:20px">@title</span>
+
+                @(Html.DevExtreme().SelectBox()
+                        .ID("selectBoxCustomer_Permissions")
+                        .ElementAttr("style", "display:inline-block;")
+                        .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                        .DataSourceOptions(o => o.Sort("name"))
+                        .DisplayExpr("name")
+                        .ValueExpr("id")
+                        .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                        .OnSelectionChanged("permission.customerChanged")
+                        .SearchEnabled(true)
+                )
+            </div>
+
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:permission.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:permission.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+        <div class="full-height-content-body " style="padding:10px;">
+            
+            <input type="hidden" id="permission-storage-name" value='["@storageKey"]' />
+
+            @(Html.DevExtreme().DataGrid()
+                .ID("permission-grid")
+                .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                .ShowBorders(false)
+                .ShowRowLines(true)
+                .OnCellPrepared("permission.table_cellPrepared")
+                .OnCellClick("permission.grid_CellClick")
+                .OnContentReady("permission.grid_ContentReady")
+                .AllowColumnReordering(true)
+                .GroupPanel(p => p.Visible(true).EmptyPanelText(Localizer["Панель группировки"].Value).AllowColumnDragging(true))
+                .SearchPanel(searchPanel => searchPanel.Visible(true))
+                .Export(e => e
+                    .Enabled(true)
+                    .FileName("Permission"))
+                .HoverStateEnabled(true)
+                .RowAlternationEnabled(true)
+                .Paging(paging => paging.Enabled(true))
+                .StateStoring(s => s
+                    .Enabled(true)
+                    .Type(StateStoringType.LocalStorage)
+                    .StorageKey(storageKey)
+                )
+                .Pager(p => p
+                    .ShowInfo(true)
+                    .ShowNavigationButtons(true)
+                    .ShowPageSizeSelector(true)
+                    .AllowedPageSizes(new int[] { 25, 50, 100 })
+                )
+                .Editing(editing =>
+                {
+                    editing.Mode(GridEditMode.Cell);
+                    editing.AllowUpdating(true);
+                })
+                .Columns(columns =>
+                {
+
+                    columns.Add()
+                        .DataField("roleId").GroupIndex(0)
+                        .AllowEditing(false)
+                        .Lookup(lookup => lookup
+                            .DataSource(new JS("permission.roleDataSource"))
+                            .DisplayExpr("name")
+                            .ValueExpr("id")
+                        )
+                        .Caption(Localizer["Роль"].Value);
+
+                    columns.Add()
+                        .DataField("operationId")
+                        .AllowEditing(false)
+                        .Lookup(lookup => lookup
+                            .DataSource(new JS("permission.operationDataSource"))
+                            .DisplayExpr("name")
+                            .ValueExpr("id")
+                        )
+                        .Caption(Localizer["Операция"].Value);
+
+                    columns.Add()
+                        .DataField("operationTypeId").GroupIndex(1)
+                        .AllowEditing(false)
+                        .Lookup(lookup => lookup
+                            .DataSource(new JS("permission.operationTypeDataSource"))
+                            .DisplayExpr("name")
+                            .ValueExpr("id")
+                        )
+                        .Caption(Localizer["Группа операций"].Value);
+
+                    columns.Add()
+                        .DataField("permitted")
+                        .DataType(GridColumnDataType.Boolean)
+                        .CalculateCellValue(@"function(rowData) { return rowData.permitted == true; }")
+                        .Caption(Localizer["Разрешено"].Value);
+
+
+                })
+                .DataSource(new JS("permission.permissionDataSource"))
+            )
+
+        </div>
+    </div>
+</div>
+
+
+<script>
+    $(function () {
+        permission.dxGrid = $("#permission-grid").dxDataGrid("instance");
+        permission.dxCustomers = $("#selectBoxCustomer_Permissions").dxSelectBox('instance');
+        permission.custId = permission.dxCustomers.option('value');
+
+        var a = $('#portlet_permission .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_permission .portlet-title');
+
+        $(window).resize(function () {
+            permission.dxGrid.option("height", parseInt($("#portlet_permission .height-as-parent").css('min-height')) - 63);
+        });        
+    });
+</script>

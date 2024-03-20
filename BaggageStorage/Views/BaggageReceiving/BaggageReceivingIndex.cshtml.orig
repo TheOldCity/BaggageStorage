@@ -1,0 +1,699 @@
+﻿@inject IViewLocalizer Localizer
+@using BaggageStorage.Classes
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_baggagereceiving_grid";
+    var title = Localizer["Приём багажа"].Value;
+}
+
+<script>
+    var baggagereceiving = {
+        storagePlacesArray: undefined,
+        clientsArray: undefined,
+        dxCustomers: undefined,
+        dxBaggageStorage: undefined,
+        dxDataGrid: undefined,
+        baseUnitObject: undefined,
+        baggageStorageArray: undefined,
+        dxStoragePlaces: undefined,
+
+
+        onEditingStart: function (e) {
+            baggagereceiving.newRow = false;
+            baggagereceiving.dxDataGrid.columnOption('amountOfDays', 'formItem', { visible: e.data.price > 0 });
+            baggagereceiving.dxDataGrid.columnOption('amountOfHour', 'formItem', { visible: e.data.hourlyPrice > 0});
+        },
+        onInitNewRow: function (e) {
+            e.data.id = guid();
+            baggagereceiving.newRow = true;
+            //debugger
+            e.data.amountOfPlaces = 1;
+            baggagereceiving.dxDataGrid.columnOption('amountOfDays', 'formItem', { visible: false });
+            baggagereceiving.dxDataGrid.columnOption('amountOfHour', 'formItem', { visible: false });
+        },
+        grid_refresh: function () {
+            baggagereceiving.dxDataGrid.refresh();
+        },
+
+        rowInserted: function (e) {
+            
+            var docId =e.data.id;
+            var amount = e.data.amount;
+
+            saleFiscalPrinter('Plata p-u bagaj', 100, amount, docId);
+
+            var obj = new Object();
+            obj.row = new Object();
+            obj.row.data = new Object();
+            obj.row.data.storagePlaceId = e.data.storagePlaceId;
+            obj.row.data.id = e.data.id;
+            obj.row.data.dateIn = e.data.dateIn;            
+            obj.row.data.amountOfPlaces = e.data.amountOfPlaces;
+
+            // TODO вычислить имя клиента
+            obj.row.data.clientName = "Ivan Ivanov";
+            baggagereceiving.printLabel(obj);
+
+            /*
+            var dataSoureceClient = baggagereceiving.dxDataGrid.columnOption('clientId', 'lookup.dataSource');
+
+            dataSoureceClient.byKey(e.data.clientId).done(function (e) {
+                obj.row.data.clientName = e.name;
+                baggagereceiving.printLabel(obj);
+            });            
+            */
+        },
+
+        closePortlet: function () {
+            $("#portlet_baggagereceiving").remove();
+            $("#tab-opened-portlet-baggagereceiving").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        customizeItemEditForm: function (item) {
+
+            if (item.dataField == "userInId") {
+                item.visible = false;
+            }
+
+        },
+
+        printLabel: function (e) {
+            
+            var dataSourece = baggagereceiving.dxDataGrid.columnOption('storagePlaceId', 'lookup.dataSource');
+            var placeNumber = '';
+
+            dataSourece.byKey(e.row.data.storagePlaceId).done(function (e) {
+                placeNumber = e.place;
+            });
+
+            setTimeout(function () {
+
+                var params = { "barcode": e.row.data.id, "place": placeNumber, "name": baggagereceiving.dxBaggageStorage.option('text'), "date": moment(e.row.data.dateIn).format('DD.MM.YYYY HH:mm'), "firstName": e.row.data.clientName, "amountOfPlaces": e.row.data.amountOfPlaces };
+                var postData = { "printerName": workPlace.PrintName, "copies": workPlace.AmountOfCopies, "templateName": workPlace.TemplateName, "params": params };
+
+                var dataForPrint = new Array();
+                dataForPrint.push(postData);
+                
+                if (workPlace.IpAdress == undefined) {
+                    toastr['error']('Укажите рабочее место');
+                }
+                else {
+                    $.ajax({
+                        url: 'http://' + workPlace.IpAdress + ':' + workPlace.Port + '/api/print/printbtw',
+                        type: "POST",
+                        contentType: "application/json",
+                        data: JSON.stringify(dataForPrint),
+                        error: function (e, text) {
+                            toastr['error']('HTTP error:' + e.status + ',' + text);
+                        },
+                        success: function (e) {
+                            if (e.error != '') {
+                                toastr['error'](e.error);
+                            }
+                        }
+                    });
+                }
+
+            }, 200);
+        },
+        contextMenuBaggageReceiving: function (e) {
+            contextMenuSource = baggagereceiving.dxDataGrid;
+            if (e.row == undefined)
+                return;
+            if (e.row.rowType === "data") {
+
+                e.items = [{
+                    text: "@Localizer["Печать"].Value",
+                    onItemClick: function () {
+                        baggagereceiving.printLabel(e);
+                    }
+                }];
+            }
+        },
+
+        table_cellPrepared: function (e) {
+
+            if (e.rowType === "data" && e.column.command === "edit") {
+                var isEditing = e.row.isEditing,
+                    $links = e.cellElement.find(".dx-link");
+
+                $links.text("");
+
+                if (isEditing) {
+                    $links.filter(".dx-link-save").addClass("dx-icon-save");
+                    $links.filter(".dx-link-cancel").addClass("dx-icon-revert");
+                } else {
+                    $links.filter(".dx-link-edit").addClass("dx-icon-edit");
+                    $links.filter(".dx-link-delete").addClass("dx-icon-trash");
+                    $links.filter(".dx-link-add").addClass("dx-icon-add");
+                }
+            }
+
+            if (e.rowType === "data" && e.column.dataField === "storagePlaceId") {
+                $.ajax({
+                    url: "/api/baggagereceiving/getplace?storagePlaceId=" + e.value,
+                    type: "GET",
+                    success: function (result) {
+                        e.cellElement.html("<span>"+ result +"</span>");
+                    }
+                });
+            }
+
+        },
+
+        editorPrepared: function (e) {
+            if (e.parentType === 'dataRow' && e.dataField === 'storagePlaceId') {
+
+                $el = e.editorElement.dxLookup({
+                    dataSource:
+                        DevExpress.data.AspNet.createStore({
+                            loadUrl: "/api/baggagereceiving/getstorageplaces?storageId=" + "53ac93bc-a9c9-44a6-92b7-0e7e94896c95",
+                        }),
+                    placeholder: e.lookup.valueMap[e.value],
+                    grouped: false,
+                    closeOnOutsideClick: true,
+                    showPopupTitle: false,
+                    searchEnabled: true,
+                    searchExpr: null,
+                    searchMode: "contains",
+                    searchPlaceholder: "Search",
+                    displayExpr: "place",
+                    searchExpr: "place",
+                    valueExpr: "id",
+                    onValueChanged: function (ea) {e.setValue(ea.value);}
+                });
+                e.cancel = true;
+            }
+        },
+
+        baggageStorageChanged: function (e) {
+
+            baggagereceiving.dxDataGrid.option("dataSource", []);
+
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "onBeforeSend": function (query, request) {
+                        if (query == "insert" || query == "update") {
+                            var obj = JSON.parse(request.data.values);
+                            obj["storageId"] = baggagereceiving.dxBaggageStorage.option('value');
+                            request.data.values = JSON.stringify(obj);
+                        }
+                    },
+                    "loadParams": {
+                        "storageId": baggagereceiving.dxBaggageStorage.option('value'),
+                    },
+                    "loadUrl": "/api/baggagereceiving",
+                    "insertUrl": "/api/baggagereceiving",
+                    "updateUrl": "/api/baggagereceiving",
+                    "deleteUrl": "/api/baggagereceiving"
+                })
+            };
+
+            baggagereceiving.dxDataGrid.option("dataSource", store);
+            baggagereceiving.dxDataGrid.option('disabled', false);
+
+            store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "loadParams": {
+                        "customerId": baggagereceiving.dxCustomers.option('value'),
+                    },
+                    "loadUrl": "/api/user"
+                })
+            };
+
+            baggagereceiving.dxDataGrid.columnOption('userInId', 'lookup.dataSource', store);
+
+            baggagereceiving.dxDataGrid.option('disabled', false);
+
+
+            store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "loadParams": {
+                        "storageId": baggagereceiving.dxBaggageStorage.option('value'),
+                    },
+                    "loadUrl": "/api/storageplaces"
+                })
+            };
+
+            baggagereceiving.dxDataGrid.columnOption('placeId', 'lookup.dataSource', store);
+
+        },
+
+        getPriceOneHour(placeId) {
+            for (var i = 0; i < baggagereceiving.storagePlacesArray.data.length; i++) {
+                if (baggagereceiving.storagePlacesArray.data[i].id == placeId)
+                    return baggagereceiving.storagePlacesArray.data[i].hourlyPrice;
+            }
+            return 0;
+        },
+        getPriceOneDay(placeId) {
+            for (var i = 0; i < baggagereceiving.storagePlacesArray.data.length; i++) {
+                if (baggagereceiving.storagePlacesArray.data[i].id == placeId)
+                    return baggagereceiving.storagePlacesArray.data[i].price;
+            }
+            return 0;
+        },
+        customerChanged: function (e) {
+
+            baggagereceiving.dxDataGrid.option("dataSource", []);
+
+            var baggageStorageForLookup = new DevExpress.data.CustomStore({
+                load: function (loadOptions) {
+                    return $.getJSON("/api/baggagestorage?customerId=" + baggagereceiving.dxCustomers.option('value'), null,
+                        function (data, textStatus, jqXHR) {
+                            baggagereceiving.baggageStorageArray = data;
+
+                            baggagereceiving.dxBaggageStorage.option('dataSource', baggagereceiving.baggageStorageArray.data);
+
+                            if (data.data.length == 1) {
+                                baggagereceiving.dxBaggageStorage.option('value', data.data[0].id);
+                            }
+                        });
+                },
+                byKey: function (key) {
+                    var result = '???';
+                    $.each(baggagereceiving.baggageStorageArray, function () {
+                        if (key == this.id)
+                            result = this;
+                    });
+                    return result;
+                }
+            });
+
+            baggageStorageForLookup.load();
+        },
+
+        storagePlaces: new DevExpress.data.CustomStore({
+            load: function () {
+<<<<<<< HEAD
+                return $.getJSON("/api/storageplaces/getfreeplaces?storageId=" + baggagereceiving.dxBaggageStorage.option('value'), null, function (data, textStatus, jqXHR) {
+=======
+                return $.getJSON("api/baggagereceiving/getstorageplaces?storageId=" + baggagereceiving.dxBaggageStorage.option('value'), null, function (data, textStatus, jqXHR) {
+>>>>>>> a1cea484728a682abb45c3710061f29f46db6c46
+                    baggagereceiving.storagePlacesArray = data;
+                });
+            },
+            byKey: function (key) {
+                
+                var result = '???';
+                $.each(baggagereceiving.storagePlacesArray.data, function () {
+                    if (key == this.id)
+                        result = this;
+                });
+                return result;
+            }
+        }),
+
+        clients: new DevExpress.data.CustomStore({
+            load: function () {
+                return $.getJSON("/api/clients?", null, function (data, textStatus, jqXHR) {
+                    baggagereceiving.clientsArray = data;
+                });
+            },
+            byKey: function (key) {
+
+                var result = '???';
+                $.each(baggagereceiving.clientsArray.data, function () {
+                    if (key == this.id)
+                        result = this;
+                });
+                return result;
+            }
+        }),
+
+        setStoragePlaceValue: function (newData, value, currentRowData) {
+
+            newData.storagePlaceId = value;
+            newData.amountOfDays = 0;
+            newData.amountOfHour = 0;
+            newData.amount = 0;
+
+            
+            if (baggagereceiving.getPriceOneDay(value) > 0) {
+                newData.amountOfDays = 1;
+                newData.amount = baggagereceiving.getPriceOneDay(value);
+            }
+            if (baggagereceiving.getPriceOneHour(value) > 0) {
+                newData.amountOfHour = 1;
+                newData.amount = baggagereceiving.getPriceOneHour(value);
+            }
+
+            baggagereceiving.dxDataGrid.columnOption('amountOfDays', 'formItem', { visible: baggagereceiving.getPriceOneDay(value)> 0 });
+            baggagereceiving.dxDataGrid.columnOption('amountOfHour', 'formItem', { visible: baggagereceiving.getPriceOneHour(value)> 0});
+        },
+
+        setAmountOfPlacesValue: function (newData, value, currentRowData) {
+             if (currentRowData.storagePlaceId == undefined)
+                return;
+
+            if (baggagereceiving.getPriceOneHour(currentRowData.storagePlaceId)== 0) {
+                if (currentRowData.amountOfDays == undefined)
+                    currentRowData.amountOfDays = 0;
+
+                for (var i = 0; i < baggagereceiving.storagePlacesArray.data.length; i++) {
+                    var id = baggagereceiving.storagePlacesArray.data[i].id;
+
+                    if (id == currentRowData.storagePlaceId) {
+                        newData.amountOfPlaces = value;
+                        newData.amount = currentRowData.amountOfDays * value * baggagereceiving.storagePlacesArray.data[i].price;
+                    }
+                }
+            }
+            else {
+                if (currentRowData.amountOfHour == undefined) /////////
+                    currentRowData.amountOfHour = 0;
+
+                for (var i = 0; i < baggagereceiving.storagePlacesArray.data.length; i++) {
+                    var id = baggagereceiving.storagePlacesArray.data[i].id;
+
+                    if (id == currentRowData.storagePlaceId) {
+                        newData.amountOfPlaces = value;
+                        newData.amount = currentRowData.amountOfHour * value * baggagereceiving.storagePlacesArray.data[i].hourlyPrice;
+                    }
+                }
+            }
+        },
+
+        setAmountOfDaysValue: function (newData, value, currentRowData) {
+
+            if (currentRowData.storagePlaceId == undefined)
+                return;
+
+            if (baggagereceiving.getPriceOneHour(currentRowData.storagePlaceId) == 0) {
+
+                if (currentRowData.amountOfPlaces == undefined)
+                    currentRowData.amountOfPlaces = 0;
+
+                for (var i = 0; i < baggagereceiving.storagePlacesArray.data.length; i++) {
+                    var id = baggagereceiving.storagePlacesArray.data[i].id;
+
+                    if (id == currentRowData.storagePlaceId) {
+                        newData.amountOfDays = value;
+                        newData.amount = currentRowData.amountOfPlaces * value * baggagereceiving.storagePlacesArray.data[i].price;
+                    }
+                }
+
+            }
+
+        },
+
+        setAmountOfHourValue: function (newData, value, currentRowData) {
+            if (currentRowData.storagePlaceId == undefined)
+                return;
+
+            if (baggagereceiving.getPriceOneHour(currentRowData.storagePlaceId) > 0) {
+                if (currentRowData.amountOfPlaces == undefined)
+                    currentRowData.amountOfPlaces = 0;
+
+                for (var i = 0; i < baggagereceiving.storagePlacesArray.data.length; i++) {
+                    var id = baggagereceiving.storagePlacesArray.data[i].id;
+
+                    if (id == currentRowData.storagePlaceId) {
+                        newData.amountOfHour = value;
+                        newData.amount = currentRowData.amountOfPlaces * value * baggagereceiving.storagePlacesArray.data[i].hourlyPrice;
+                    }
+                }
+            }
+        },
+
+        table_EditorPrepared: function (e) {
+            var editedRow = e;
+            if (e.parentType === 'dataRow' && e.dataField === 'clientId') {
+
+                var el=e.editorElement.dxDropDownBox({
+                    value: e.row.data.clientName,
+                    contentTemplate: function (e) {
+                       var $list = $("<div>").dxDataGrid({
+                            dataSource: DevExpress.data.AspNet.createStore({
+                                key: "id",
+                                loadUrl: "/api/clients",
+                                updateUrl: "/api/clients",
+                                deleteUrl: "/api/clients",
+                                insertUrl:"/api/clients",
+                           }),
+                           selection: { mode: "single" },
+                           searchPanel: { visible: true },
+                           editing: {
+                                mode: "row",
+                                allowUpdating: true,
+                                allowDeleting: true,
+                                allowAdding: true
+                            },
+                           onCellPrepared:table_cellPrepared,
+                           onSelectionChanged: function (selectedItems) {
+                                var data = selectedItems.selectedRowsData[0];
+                                if (data) {
+                                    if (!data.hasItems) {
+                                        baggagereceiving.dxDataGrid.cellValue(editedRow.row.rowIndex, "clientId", data.id);
+                                    }
+                                }
+                            },
+                            columns: [
+                                { dataField: "firstName", caption: "@Html.Raw(Localizer["Имя"].Value)"},
+                                { dataField: "lastName", caption: "@Html.Raw(Localizer["Фамилия"].Value)" },
+                                { dataField: "phone", caption: "@Html.Raw(Localizer["№ телефона"].Value)" }
+                            ],
+                        });
+                        return $list;
+                    }
+                });
+
+                setTimeout(function () {
+
+                    if($(el).find('.dx-dropdowneditor-button.dx-button-normal.dx-widget').size() > 1)
+                        $($(el).find('.dx-dropdowneditor-button.dx-button-normal.dx-widget')[0]).remove();
+                },50)
+
+                e.cancel = true;
+            }
+        },
+    }
+
+</script>
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green portlet-header-icon" style="top: 8px;position: relative;"></i>
+            <span class="caption-subject font-main-color bold uppercase" style="margin-right:20px; margin-left:10px;">@title</span>
+            <span style="display:inline-block">
+                @using (Html.BeginForm(FormMethod.Get, new
+                {
+                    id = "form",@*Class = "bordered",*@ style = "margin-bottom: 0px",
+                    action = "/api/baggagereceiving"
+                }))
+                {
+                    @(Html.DevExtreme().Form()
+                                                   .ID("formControlsBaggageReceiving")
+                                                   .ColCount(2)
+                                                   .Items(items =>
+                                                   {
+                                                       items.AddSimple().DataField("CustomerId")
+                                                        .Label(l => l.Text(Localizer["Фирма"].Value))
+                                                        .ValidationRules(v =>
+                                                        {
+                                                            v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                        })
+                                                        .Editor(e => e
+                                                            .SelectBox()
+                                                            .Width(200)
+                                                            .ID("baggagereceivingSelectBoxCustomer")
+                                                            .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                                                            .DisplayExpr("name")
+                                                            .ValueExpr("id")
+                                                            .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                                            .OnSelectionChanged("baggagereceiving.customerChanged")
+                                                            .SearchEnabled(true)
+                                                            );
+
+                                                       items.AddSimple().DataField("StorageId")
+                                                        .Label(l => l.Text(Localizer["Камера хранения"].Value))
+                                                        .ValidationRules(v =>
+                                                        {
+                                                            v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                        })
+                                                        .Editor(e => e
+                                                            .SelectBox()
+                                                            .Width(200)
+                                                            .ID("baggagereceivingSelectBoxBaggageStorage")
+                                                            .DisplayExpr("name")
+                                                            .ValueExpr("id")
+                                                            .OnSelectionChanged("baggagereceiving.baggageStorageChanged")
+                                                            .SearchEnabled(true)
+                                                            );
+                                                   })
+                                                            .LabelLocation(FormLabelLocation.Left)
+                                                            .ReadOnly(false)
+                                                            .ShowColonAfterLabel(true)
+                    )}
+            </span>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggagereceiving.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggagereceiving.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:5px;">
+
+        <input type="hidden" id="baggagereceiving-view-name" value="@viewFileName" />
+        <input type="hidden" id="baggagereceiving-storage-name" value='["@storageKey"]' />
+
+        @(Html.DevExtreme().DataGrid()
+                                .ID("gridBaggageReceiving")
+                                .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                                .ShowBorders(true)
+                                .ShowRowLines(true)
+                                .OnCellPrepared("baggagereceiving.table_cellPrepared")
+                                .AllowColumnReordering(true)
+                                .Grouping(grouping => grouping.AutoExpandAll(true))
+                                .SearchPanel(searchPanel => searchPanel.Visible(true))
+                                .Selection(s => s.Mode(SelectionMode.Single))
+                                .GroupPanel(groupPanel => groupPanel.Visible(true))
+                                .OnInitNewRow("baggagereceiving.onInitNewRow")
+                                .OnEditingStart("baggagereceiving.onEditingStart")
+                                .OnEditorPrepared("baggagereceiving.table_EditorPrepared")
+                                .HoverStateEnabled(true)
+                                .RowAlternationEnabled(true)
+                                .OnRowInserted("baggagereceiving.rowInserted")
+                                .OnContextMenuPreparing("baggagereceiving.contextMenuBaggageReceiving")
+                                .GroupPanel(p => p.Visible(true).EmptyPanelText(Localizer["Панель группировки"].Value).AllowColumnDragging(true))
+                                .Paging(paging => paging.Enabled(true))
+                                .FilterRow(filterRow => filterRow
+                                    .Visible(true)
+                                    .ApplyFilter(GridApplyFilterMode.Auto)
+                                )
+                                .StateStoring(s => s
+                                    .Enabled(true)
+                                    .Type(StateStoringType.LocalStorage)
+                                    .StorageKey(storageKey)
+                                )
+                                .Editing(editing =>
+                                {
+                                    editing.AllowAdding(true);
+                                    editing.Mode(GridEditMode.Popup);
+                                    editing.AllowUpdating(true);
+                                    editing.Popup(p => p.Width(1250).Height(250));
+                                    editing.Form(f => f.CustomizeItem("baggagereceiving.customizeItemEditForm"));
+                                })
+                                .OnEditorPrepared("baggagereceiving.editorPrepared")
+
+                                .Columns(columns =>
+                                {
+
+                                    columns.Add()
+                                        .DataField("clientId")
+                                        .Visible(true)
+                                        .Lookup(lookup => lookup
+                                            .DataSource(d => d.WebApi().RouteName("ClientsApi").LoadAction("Get").Key("id"))
+                                            //.DataSource(new JS("baggagereceiving.clients"))
+                                            .DisplayExpr("name")
+                                            .ValueExpr("id"))
+                                        .ValidationRules(r => r.AddRequired())
+                                        .Caption(Localizer["Клиент"].Value);
+
+                                    columns.Add()
+                                        .DataField("storagePlaceId")
+                                        .Visible(false)
+                                        .SetCellValue("baggagereceiving.setStoragePlaceValue")
+                                        .Lookup(lookup => lookup
+                                            .DataSource(new JS("baggagereceiving.storagePlaces"))
+                                            .DisplayExpr("place")
+                                            .ValueExpr("id"))
+                                        .ValidationRules(r => r.AddRequired())
+                                        .Caption(Localizer["№ места"].Value);
+
+                                    // вспомогательное поле
+                                    columns.Add()
+                                        .DataField("placeId")
+                                        .FormItem(f=>f.Visible(false))                                        
+                                        .Visible(true)
+                                        .Lookup(lookup => lookup
+                                            .DisplayExpr("place")
+                                            .ValueExpr("id"))
+                                        .Caption(Localizer["№ места"].Value);
+
+
+                                    columns.Add()
+                                        .DataField("amountOfPlaces")
+                                        .DataType(GridColumnDataType.String)
+                                        .SetCellValue("baggagereceiving.setAmountOfPlacesValue")
+                                        .Caption(Localizer["Кол-во мест"].Value);
+
+                                    columns.Add()
+                                        .DataField("amountOfDays")
+                                        .DataType(GridColumnDataType.Number)
+                                        .SetCellValue("baggagereceiving.setAmountOfDaysValue")
+                                        .Caption(Localizer["Кол-во дней"].Value);
+
+                                    columns.Add()
+                                        .DataField("amountOfHour")
+                                        .DataType(GridColumnDataType.Number)
+                                        .SetCellValue("baggagereceiving.setAmountOfHourValue")
+                                        .Caption(Localizer["Кол-во часов"].Value);
+
+                                    columns.Add()
+                                        .DataField("amount")
+                                        .AllowEditing(false)
+                                        .DataType(GridColumnDataType.Number)
+                                        .Caption(Localizer["Сумма"].Value);
+
+                                    columns.Add()
+                                        .DataField("userInId")
+                                        .AllowEditing(false)
+                                        .Lookup(lookup => lookup
+                                                .DisplayExpr("name")
+                                                .ValueExpr("id")
+                                        )
+                                        .Visible(true)
+                                        .Caption(Localizer["Кто принял"].Value);
+                                })
+        )
+    </div>
+</div>
+
+<script>
+
+    $(function () {
+        baggagereceiving.dxBaggageStorage = $("#baggagereceivingSelectBoxBaggageStorage").dxSelectBox('instance');
+        baggagereceiving.dxCustomers = $("#baggagereceivingSelectBoxCustomer").dxSelectBox('instance');
+        baggagereceiving.dxDataGrid = $("#gridBaggageReceiving").dxDataGrid('instance');
+        baggagereceiving.dxDataGrid.option('dataSource', []);
+        baggagereceiving.dxDataGrid.option('disabled', true);
+    });
+
+    function getFormattedDate(date) {
+        var year = date.getFullYear();
+
+        var month = (1 + date.getMonth()).toString();
+        month = month.length > 1 ? month : '0' + month;
+
+        var day = date.getDate().toString();
+        day = day.length > 1 ? day : '0' + day;
+
+        return year + "-" + month + '-' + day;
+    }
+
+    $(function () {
+
+        $(window).resize(function () {
+            baggagereceiving.dxDataGrid.option("height", parseInt($("#portlet_baggagereceiving .height-as-parent").css('min-height')) - 63);
+        });
+    });
+
+</script>

@@ -1,0 +1,133 @@
+﻿@inject IViewLocalizer Localizer
+
+@{
+    Layout = null;
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_customers_grid";
+
+}
+@{
+    var title = Localizer["Справочник клиентов системы"].Value;
+}
+
+<script>
+    var customer = {
+        dxGrid: undefined,
+        closePortlet: function () {
+            $("#portlet_customer").remove();
+            $("#tab-opened-portlet-customer").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+        grid_ContentReady: function (e) {
+            customer.dxGrid.focus(customer.dxGrid.getCellElement(0, 'name'));
+        },
+        grid_CellClick: function (e) {
+            if ($(e.cellElement).parent().index() <= customer.dxGrid.getVisibleRows().length - 1 && customer.dxGrid.getController("editing").isEditing() == false)
+                customer.dxGrid.focus(e.cellElement);
+        },
+        grid_Refresh: function () {
+            customer.dxGrid.refresh();
+        }
+    };
+</script>
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green"></i>
+            <span class="caption-subject font-main-color bold uppercase">@title</span>
+        </div>
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:customer.grid_Refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:customer.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+        <div class="full-height-content-body ">
+
+            <input type="hidden" id="customer-view-name" value="@viewFileName" />
+            <input type="hidden" id="customer-storage-name" value='["@storageKey"]' />
+
+            @(Html.DevExtreme().DataGrid()
+                        .ID("gridCustomersContainer")
+                        .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                        .ShowBorders(true)
+                        .ShowRowLines(true)
+                        .SearchPanel(searchPanel => searchPanel.Visible(true))
+                        .OnCellPrepared("table_cellPrepared")
+                        .OnCellClick("customer.grid_CellClick")
+                        .OnContentReady("customer.grid_ContentReady")
+                        .Export(e => e
+                            .Enabled(true)
+                            .FileName("Customers").AllowExportSelectedData(true))
+                        .HoverStateEnabled(true)
+                        .RowAlternationEnabled(true)
+                        .Paging(paging => paging.Enabled(true))
+                        .Selection(s => s.Mode(SelectionMode.Multiple).AllowSelectAll(true).SelectAllMode(SelectAllMode.Page))
+                        .StateStoring(s => s
+                            .Enabled(true)
+                            .Type(StateStoringType.LocalStorage)
+                            .StorageKey(storageKey)
+                        )
+                        .Pager(p => p
+                            .ShowInfo(true)
+                            .ShowNavigationButtons(true)
+                            .ShowPageSizeSelector(true)
+                            .AllowedPageSizes(new int[] { 25, 50, 100 })
+                        )
+                        .Editing(editing =>
+                        {
+                            editing.AllowAdding(true);
+                            editing.AllowDeleting(true);
+                            editing.Mode(GridEditMode.Form);
+                            editing.AllowUpdating(true);
+                        })
+                        .Columns(columns =>
+                        {
+                            columns.Add()
+                                .DataField("name")
+                                .Caption(Localizer["Название фирмы"].Value);
+
+                            columns.Add()
+                                .DataField("address")
+                                .Caption(Localizer["Адрес"].Value);
+
+                            columns.Add()
+                                .DataField("email")
+                                .Caption(Localizer["Email"].Value);
+                            columns.Add()
+                                .DataField("phone")
+                                .Caption(Localizer["Телефон."].Value);
+
+
+                        })
+                        .DataSource(ds => ds.WebApi().RouteName("CustomerApi").Key("id")
+                            .LoadAction("Get")
+                            .DeleteAction("Delete")
+                            .InsertAction("Post")
+                            .UpdateAction("Put"))
+            )
+        </div>
+    </div>
+</div>
+
+<script>
+    $(function () {
+        customer.dxGrid = $("#gridCustomersContainer").dxDataGrid('instance');
+
+        $('#portlet_customer .dx-toolbar').hide();
+        var a = $('#portlet_customer .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_customer .portlet-title');
+
+        $(window).resize(function () {
+            customer.dxGrid.option("height", parseInt($("#portlet_customer .height-as-parent").css('min-height')) - 63);
+        });
+    });
+</script>

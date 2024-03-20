@@ -1,0 +1,191 @@
+﻿@inject IViewLocalizer Localizer
+@using BaggageStorage.Classes
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_workplace_grid";
+    var title = Localizer["Рабочие места"].Value;
+}
+
+<script>
+    var workplace = {
+        dxGrid: undefined,
+        dxBaggageStorage: undefined,
+        dxCustomers: undefined,
+
+        closePortlet: function () {
+            $("#portlet_workplace").remove();
+            $("#tab-opened-portlet-workplace").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        grid_ContentReady: function (e) {
+            workplace.dxGrid.focus(workplace.dxGrid.getCellElement(0, 'name'));
+        },
+
+        customerChanged: function (sender) {
+
+            var customerId = "";
+
+            if (sender.selectedItem != undefined) {
+                customerId = sender.selectedItem.id;
+            }
+
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "loadParams": { "customerId": customerId },
+                    "onBeforeSend": workplace.workplaceGroupBeforeSend,
+                    "loadUrl": "/api/WorkPlace", "insertUrl": "/api/WorkPlace", "updateUrl": "/api/WorkPlace", "deleteUrl": "/api/WorkPlace"
+                })
+            };
+
+            workplace.dxGrid.option("dataSource", store);
+
+        },
+
+        workplaceGroupBeforeSend: function (query, request) {
+            if (query == "insert" || query == "update") {
+                var obj = JSON.parse(request.data.values);
+                obj["customerId"] = workplace.dxCustomers.option('value');
+                request.data.values = JSON.stringify(obj);
+            }
+        },
+
+        grid_Refresh: function () {
+            workplace.dxGrid.refresh();
+        }
+    };
+</script>
+
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green"></i>
+            <span class="caption-subject font-main-color bold uppercase">@title</span>
+            <span style="display:inline-block">
+                @(Html.DevExtreme().SelectBox()
+                                .Width(200)
+                                .ID("selectBoxWorkPlace")
+                                .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id")
+                                        .LoadAction("Get")
+                                        .DeleteAction("Delete")
+                                        .InsertAction("Post")
+                                        .UpdateAction("Put"))
+                                .DisplayExpr("name")
+                                .ValueExpr("id")
+                                .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                .OnSelectionChanged("workplace.customerChanged")
+                                .SearchEnabled(true))
+            </span>
+        </div>
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:workplace.grid_Refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:workplace.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+        <div class="full-height-content-body ">
+
+            <input type="hidden" id="workplace-view-name" value="@viewFileName" />
+            <input type="hidden" id="workplace-storage-name" value='["@storageKey"]' />
+
+            @(Html.DevExtreme().DataGrid()
+                        .ID("gridWorkPlace")
+                        .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                        .Selection(s => s.Mode(SelectionMode.Single))
+                        .ShowBorders(true)
+                        .ShowRowLines(true)
+                        .SearchPanel(searchPanel => searchPanel.Visible(true))
+                        .OnCellPrepared("table_cellPrepared")
+                        .OnContentReady("workplace.grid_ContentReady")
+                        .HoverStateEnabled(true)
+                        .RowAlternationEnabled(true)
+                        .Paging(paging => paging.Enabled(true))
+                        .StateStoring(s => s
+                            .Enabled(true)
+                            .Type(StateStoringType.LocalStorage)
+                            .StorageKey(storageKey)
+                        )
+                        .Pager(p => p
+                            .ShowInfo(true)
+                            .ShowNavigationButtons(true)
+                            .ShowPageSizeSelector(true)
+                            .AllowedPageSizes(new int[] { 25, 50, 100 })
+                        )
+                        .Editing(editing =>
+                        {
+                            editing.AllowAdding(true);
+                            editing.AllowDeleting(true);
+                            editing.Mode(GridEditMode.Form);
+                            editing.AllowUpdating(true);
+                        })
+                        .Columns(columns =>
+                        {
+                            columns.Add()
+                                .DataField("name")
+                                .Caption(Localizer["Название места"].Value);
+
+                            columns.Add()
+                                .DataField("ipAdress")
+                                .Caption(Localizer["IP адрес сервера печати"].Value);
+
+                            columns.Add()
+                                .DataField("port")
+                                .Caption(Localizer["Порт сервера печати"].Value);
+
+                            columns.Add()
+                                .DataField("printName")
+                                .Caption(Localizer["Имя принтера"].Value);
+
+                            columns.Add()
+                                .DataField("amountOfCopies")
+                                .Caption(Localizer["Кол-во копий"].Value);
+
+                            columns.Add()
+                                .DataField("templateName")
+                                .Caption(Localizer["Имя шаблона"].Value);
+
+                            columns.Add()
+                                .DataField("ipAdressHardwareService")
+                                .Caption(Localizer["IP адрес фискального сервиса"].Value);
+
+                            columns.Add()
+                                .DataField("portHardwareService")
+                                .Caption(Localizer["Порт фискального сервиса"].Value);
+
+                        })
+                        .DataSource(ds => ds.WebApi().RouteName("WorkPlaceApi").Key("id")
+                            .LoadAction("Get")
+                            .DeleteAction("Delete")
+                            .InsertAction("Post")
+                            .UpdateAction("Put"))
+            )
+        </div>
+    </div>
+</div>
+
+<script>
+    $(function () {
+        workplace.dxGrid = $("#gridWorkPlace").dxDataGrid('instance');
+        workplace.dxCustomers = $("#selectBoxWorkPlace").dxSelectBox('instance');
+
+        $('#portlet_workplace .dx-toolbar').hide();
+        var a = $('#portlet_workplace .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_workplace .portlet-title');
+
+        $(window).resize(function () {
+            workplace.dxGrid.option("height", parseInt($("#portlet_workplace .height-as-parent").css('min-height')) - 63);
+        });
+    });
+</script>

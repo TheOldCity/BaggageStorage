@@ -1,0 +1,355 @@
+﻿@inject IViewLocalizer Localizer
+@using BaggageStorage.Classes
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_baggageregister_grid";
+    var title = Localizer["Реестр багажа"].Value;
+    var thisYear = DateTime.Now.Year;
+}
+
+<script>
+    var baggageregister = {
+        dxCustomers: undefined,
+        dxBaggageStorage: undefined,
+        dxBaggageRegister: undefined,
+        dxDataGrid: undefined,
+
+        grid_refresh: function () {
+            baggageregister.dxDataGrid.refresh();
+        },
+
+        closePortlet: function () {
+            $("#portlet_baggageregister").remove();
+            $("#tab-opened-portlet-baggageregister").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        table_cellPrepared: function (e) {
+
+            if (e.rowType === "data" && e.column.command === "edit") {
+                var isEditing = e.row.isEditing,
+                    $links = e.cellElement.find(".dx-link");
+
+                $links.text("");
+
+                if (isEditing) {
+                    $links.filter(".dx-link-save").addClass("dx-icon-save");
+                    $links.filter(".dx-link-cancel").addClass("dx-icon-revert");
+                } else {
+                    $links.filter(".dx-link-edit").addClass("dx-icon-edit");
+                    $links.filter(".dx-link-delete").addClass("dx-icon-trash");
+                    $links.filter(".dx-link-add").addClass("dx-icon-add");
+                }
+            }
+
+        },
+
+        baggageStorageChanged: function (e) {
+
+            baggageregister.dxDataGrid.option("dataSource", []);
+            var dateFrom = baggageregister.dxDateFrom.option('value');            
+            var dateTo = baggageregister.dxDateTo.option('value');
+
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "onBeforeSend": function (query, request) {
+                        if (query == "insert" || query == "update") {
+                            var obj = JSON.parse(request.data.values);
+                            obj["storageId"] = baggageregister.dxBaggageStorage.option('value');
+                            request.data.values = JSON.stringify(obj);
+                        }
+                    },
+                    "loadParams": {
+                        "storageId": baggageregister.dxBaggageStorage.option('value'),
+                        "dateFrom": getFormattedDate(dateFrom),
+                        "dateTo": getFormattedDate(dateTo)
+                    },
+                    "loadUrl": "/api/baggageregister",
+                    "insertUrl": "/api/baggageregister",
+                    "updateUrl": "/api/baggageregister",
+                    "deleteUrl": "/api/baggageregister"
+                })
+            };
+
+            baggageregister.dxDataGrid.option("dataSource", store);
+            baggageregister.dxDataGrid.option('disabled', false);
+        },
+
+        customerChanged: function (e) {
+            baggageregister.dxBaggageStorage.reset();
+            var baggageStorageForLookup = new DevExpress.data.CustomStore({
+                load: function (loadOptions) {
+                    return $.getJSON("/api/baggagestorage?customerId=" + baggageregister.dxCustomers.option('value'), null,
+                        function (data, textStatus, jqXHR) {
+                            baggageregister.baggageStorageArray = data;
+
+                            baggageregister.dxBaggageStorage.option('dataSource', baggageregister.baggageStorageArray.data);
+
+                            if (data.data.length == 1) {
+                                baggageregister.dxBaggageStorage.option('value', data.data[0].id);
+                            }
+                        });
+                },
+                byKey: function (key) {
+                    var result = '???';
+                    $.each(baggageregister.baggageStorageArray, function () {
+                        if (key == this.id)
+                            result = this;
+                    });
+                    return result;
+                }
+            });
+            baggageStorageForLookup.load();
+        },
+
+        groupsBeforeSend: function (query, request) {
+            if (query == "insert" || query == "update") {
+                var obj = JSON.parse(request.data.values);
+                obj["customerId"] = baggageregister.dxCustomers.option('value');
+                request.data.values = JSON.stringify(obj);
+            }
+        },
+
+        dateFromChanged: function (e) {
+                baggageregister.dxDataGrid.option("dataSource", []);
+                var dateFrom = baggageregister.dxDateFrom.option('value');            
+                var dateTo = baggageregister.dxDateTo.option('value');
+
+                var store = {
+                    "store": DevExpress.data.AspNet.createStore({
+                        "key": "id",
+                        "onBeforeSend": function (query, request) {
+                            if (query == "insert" || query == "update") {
+                                var obj = JSON.parse(request.data.values);
+                                obj["storageId"] = baggageregister.dxBaggageStorage.option('value');
+                                request.data.values = JSON.stringify(obj);
+                            }
+                        },
+                        "loadParams": {
+                            "storageId": baggageregister.dxBaggageStorage.option('value'),
+                            "dateFrom": getFormattedDate(dateFrom),
+                            "dateTo": getFormattedDate(dateTo)
+                        },
+                        "loadUrl": "/api/baggageregister",
+                        "insertUrl": "/api/baggageregister",
+                        "updateUrl": "/api/baggageregister",
+                        "deleteUrl": "/api/baggageregister"
+                    })
+                };
+
+                baggageregister.dxDataGrid.option("dataSource", store);
+                baggageregister.dxDataGrid.option('disabled', false);
+        },
+
+        dateToChanged: function (e) {
+                baggageregister.dxDataGrid.option("dataSource", []);
+                var dateFrom = baggageregister.dxDateFrom.option('value');            
+                var dateTo = baggageregister.dxDateTo.option('value');
+
+                var store = {
+                    "store": DevExpress.data.AspNet.createStore({
+                        "key": "id",
+                        "onBeforeSend": function (query, request) {
+                            if (query == "insert" || query == "update") {
+                                var obj = JSON.parse(request.data.values);
+                                obj["storageId"] = baggageregister.dxBaggageStorage.option('value');
+                                request.data.values = JSON.stringify(obj);
+                            }
+                        },
+                        "loadParams": {
+                            "storageId": baggageregister.dxBaggageStorage.option('value'),
+                            "dateFrom": getFormattedDate(dateFrom),
+                            "dateTo": getFormattedDate(dateTo)
+                        },
+                        "loadUrl": "/api/baggageregister",
+                        "insertUrl": "/api/baggageregister",
+                        "updateUrl": "/api/baggageregister",
+                        "deleteUrl": "/api/baggageregister"
+                    })
+                };
+
+                baggageregister.dxDataGrid.option("dataSource", store);
+                baggageregister.dxDataGrid.option('disabled', false);
+        }
+    };
+</script>
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green portlet-header-icon" style="top: 8px;position: relative;"></i>
+            <span class="caption-subject font-main-color bold uppercase" style="margin-right:20px; margin-left:10px;">@title</span>
+            <span style="display:inline-block">
+                @using (Html.BeginForm(FormMethod.Get, new
+                {
+                    id = "form",@*Class = "bordered",*@ style = "margin-bottom: 0px",
+                    action = "/api/baggagereceiving"
+                }))
+                {
+                    @(Html.DevExtreme().Form()
+                                           .ID("formControlsBaggageRegister")
+                                           .ColCount(8)
+                                           .Items(items =>
+                                           {
+
+                                               items.AddSimple().DataField("CustomerId")
+                                                .Label(l => l.Text(Localizer["Фирма"].Value))
+                                                .ValidationRules(v =>
+                                                {
+                                                    v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                })
+                                                .Editor(e => e
+                                                    .SelectBox()
+                                                    .Width(150)
+                                                    .ID("baggageregister_selectBoxCustomer")
+                                                    .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                                                    .DisplayExpr("name")
+                                                    .ValueExpr("id")
+                                                    .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                                    .OnSelectionChanged("baggageregister.customerChanged")
+                                                    .SearchEnabled(true)
+                                                    );
+
+                                               items.AddSimple().DataField("StorageId")
+                                                .Label(l => l.Text(Localizer["Камера хранения"].Value))
+                                                .ValidationRules(v =>
+                                                {
+                                                    v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                })
+                                                .Editor(e => e
+                                                    .SelectBox()
+                                                    .Width(150)
+                                                    .ID("baggageregisterSelectBoxBaggageStorage")
+                                                    .DisplayExpr("name")
+                                                    .ValueExpr("id")
+                                                    .OnSelectionChanged("baggageregister.baggageStorageChanged")
+                                                    .SearchEnabled(true)
+                                                    );
+
+                                               items.AddSimple().DataField("DateFrom")
+                                                   .Label(l => l.Text(Localizer["С"].Value))
+                                                   .Editor(e => e
+                                                       .DateBox()
+                                                       .Width(140)
+                                                       .ID("baggageregisterSelectBoxDateFrom")
+                                                       .OnValueChanged("baggageregister.dateFromChanged")
+                                                       .Value(new DateTime(thisYear, 1, 1, 0, 0, 0))
+                                                   );
+
+                                                items.AddSimple().DataField("DateTo")
+                                                    .Label(l => l.Text(Localizer["По"].Value))
+                                                    .Editor(e => e
+                                                        .DateBox()
+                                                        .Width(140)
+                                                        .ID("baggageregisterSelectBoxDateTo")
+                                                        .OnValueChanged("baggageregister.dateToChanged")
+                                                        .Value(new DateTime(thisYear, 12, 31, 23, 59, 59))
+                                                    );
+                                           })
+                                                        .LabelLocation(FormLabelLocation.Left)
+                                                        .ReadOnly(false)
+                                                        .ShowColonAfterLabel(true)
+                    )}
+            </span>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggageregister.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggageregister.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:5px;">
+
+        <input type="hidden" id="baggageregister-view-name" value="@viewFileName" />
+        <input type="hidden" id="baggageregister-storage-name" value='["@storageKey"]' />
+
+        @(Html.DevExtreme().DataGrid()
+                        .ID("gridBaggageRegister")
+                        .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                        .ShowBorders(true)
+                        .ShowRowLines(true)
+                        .OnCellPrepared("baggageregister.table_cellPrepared")
+                        .Selection(s => s.Mode(SelectionMode.Single))
+                        .AllowColumnReordering(true)
+                        .Grouping(grouping => grouping.AutoExpandAll(true))
+                        .SearchPanel(searchPanel => searchPanel.Visible(true))
+                        .FilterRow(filterRow => filterRow
+                            .Visible(true)
+                            .ApplyFilter(GridApplyFilterMode.Auto)
+                        )
+                        .HoverStateEnabled(true)
+                        .RowAlternationEnabled(true)
+                        .Paging(paging => paging.Enabled(true))
+                        .StateStoring(s => s
+                            .Enabled(true)
+                            .Type(StateStoringType.LocalStorage)
+                            .StorageKey(storageKey)
+                        )
+                        .Pager(p => p
+                            .ShowInfo(true)
+                            .ShowNavigationButtons(true)
+                            .ShowPageSizeSelector(true)
+                            .AllowedPageSizes(new int[] { 25, 50, 100 })
+                        )
+                        .Columns(columns =>
+                        {
+                            columns.Add()
+                                .DataField("clientId")
+                                .Visible(true)
+                                .Caption(Localizer["Клиент"].Value);
+
+                            columns.Add()
+                                .DataField("dateIn")
+                                .Visible(true)
+                                .AllowEditing(true)
+                                .DataType(GridColumnDataType.Date)
+                                .Format("dd.MM.yyyy")
+                                .Caption(Localizer["Дата приёма"].Value);
+
+                            columns.Add()
+                                .DataField("amountOfDays")
+                                .Visible(true)
+                                .Caption(Localizer["Кол-во дней"].Value);
+
+                            columns.Add()
+                               .DataField("amountOfHours")
+                               .Visible(true)
+                               .Caption(Localizer["Кол-во часов"].Value);
+                        })
+        )
+    </div>
+</div>
+
+<script>
+
+    $(function () {
+        baggageregister.dxDataGrid = $("#gridBaggageRegister").dxDataGrid('instance');
+        baggageregister.dxCustomers = $("#baggageregister_selectBoxCustomer").dxSelectBox('instance');
+        baggageregister.dxBaggageRegister = $("#gridBaggageRegistere").dxDataGrid('instance');
+        baggageregister.dxBaggageStorage = $("#baggageregisterSelectBoxBaggageStorage").dxSelectBox('instance');
+        baggageregister.dxDateFrom = $("#baggageregisterSelectBoxDateFrom").dxDateBox('instance');
+        baggageregister.dxDateTo = $("#baggageregisterSelectBoxDateTo").dxDateBox('instance');
+        baggageregister.dxDataGrid.option('disabled', true);
+        baggageregister.dxDataGrid.option('dataSource', []);
+
+        var a = $('#portlet_baggageregister .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_baggageregister .portlet-title');
+
+        $(window).resize(function () {
+            baggageregister.dxDataGrid.option("height", parseInt($("#portlet_baggageregister .height-as-parent").css('min-height')) - 63);
+        });
+    });
+
+</script>

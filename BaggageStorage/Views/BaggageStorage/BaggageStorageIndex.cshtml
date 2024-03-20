@@ -1,0 +1,193 @@
+﻿@inject IViewLocalizer Localizer
+@using BaggageStorage.Classes
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_baggagestorage_grid";
+    var title = Localizer["Камеры хранения"].Value;
+}
+
+<script>
+    var baggagestorage = {
+        dxCustomers: undefined,
+        dxBaggageStorage:undefined,
+        dxDataGrid: undefined,
+        cashType: [{ id: 0, name: "@Localizer["Почасовая оплата"]" }, { id: 1, name: "@Localizer["Посуточная оплата"]" }],
+        baggageStorageArray:undefined,
+
+        grid_refresh: function(){
+            baggagestorage.dxDataGrid.refresh();
+        },
+
+        closePortlet: function () {
+            $("#portlet_baggagestorage").remove();
+            $("#tab-opened-portlet-baggagestorage").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        customerChanged: function (e) {
+
+            baggagestorage.dxDataGrid.option("dataSource", []);
+
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "loadParams": { "customerId": baggagestorage.dxCustomers.option('value') },
+                    "onBeforeSend": baggagestorage.beforeSend,
+                    "loadUrl": "/api/baggagestorage", "insertUrl": "/api/baggagestorage", "updateUrl": "/api/baggagestorage", "deleteUrl": "/api/baggagestorage"
+                })
+            };
+
+            baggagestorage.dxDataGrid.option("dataSource", store);
+
+        },
+
+        beforeSend: function (query, request) {
+                    if (query == "insert" || query == "update") {
+                        var obj = JSON.parse(request.data.values);
+                        obj["customerId"] = baggagestorage.dxCustomers.option('value');
+                        request.data.values = JSON.stringify(obj);
+                    }
+                },
+    };
+</script>
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green portlet-header-icon" style="top: 8px;position: relative;"></i>
+            <span class="caption-subject font-main-color bold uppercase" style="margin-right:20px; margin-left:10px;">@title</span>
+            <span style="display:inline-block">
+                @using (Html.BeginForm(FormMethod.Get, new
+                {
+                    id = "form",@*Class = "bordered",*@ style = "margin-bottom: 0px",
+                    action = "/api/baggagereceiving"
+                }))
+                {
+                    @(Html.DevExtreme().Form()
+                                           .ID("formControlsBaggageStorage")
+                                           .ColCount(2)
+                                           .Items(items =>
+                                           {
+
+                                               items.AddSimple().DataField("CustomerId")
+                                                .Label(l => l.Text(Localizer["Фирма"].Value))
+                                                .ValidationRules(v =>
+                                                {
+                                                    v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                })
+                                                .Editor(e => e
+                                                    .SelectBox()
+                                                    .Width(200)
+                                                    .ID("baggagestorage_selectBoxCustomer")
+                                                    .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                                                    .DisplayExpr("name")
+                                                    .ValueExpr("id")
+                                                    .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                                    .OnSelectionChanged("baggagestorage.customerChanged")
+                                                    .SearchEnabled(true)
+                                                    );
+                                           })
+                                                        .LabelLocation(FormLabelLocation.Left)
+                                                        .ReadOnly(false)
+                                                        .ShowColonAfterLabel(true)
+                    )}
+            </span>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggagestorage.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggagestorage.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+
+        @(Html.DevExtreme().DataGrid()
+                        .ID("gridBaggageStorage")
+                        .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                        .ShowBorders(true)
+                        .ShowRowLines(true)
+                        .OnCellPrepared("table_cellPrepared")
+                        .Selection(s => s.Mode(SelectionMode.Single))
+                        .AllowColumnReordering(true)
+                        .Grouping(grouping => grouping.AutoExpandAll(true))
+                        .SearchPanel(searchPanel => searchPanel.Visible(true))
+                        .HoverStateEnabled(true)
+                        .RowAlternationEnabled(true)
+                        .Paging(paging => paging.Enabled(true))
+                        .FilterRow(filterRow => filterRow
+                            .Visible(true)
+                            .ApplyFilter(GridApplyFilterMode.Auto)
+                        )
+                        .StateStoring(s => s
+                            .Enabled(true)
+                            .Type(StateStoringType.LocalStorage)
+                            .StorageKey(storageKey)
+                        )
+                        .Pager(p => p
+                            .ShowInfo(true)
+                            .ShowNavigationButtons(true)
+                            .ShowPageSizeSelector(true)
+                            .AllowedPageSizes(new int[] { 25, 50, 100 })
+                        )
+                        .Editing(editing =>
+                        {
+                            editing.AllowAdding(true);
+                            editing.AllowDeleting(true);
+                            editing.Mode(GridEditMode.Form);
+                            editing.AllowUpdating(true);
+                        })
+
+                        .Columns(columns =>
+                        {
+                            columns.Add()
+                                .DataField("name")
+                                .Visible(true)
+                                .Caption(Localizer["Название"].Value);
+
+                            columns.Add()
+                                .DataField("shortName")
+                                .Visible(true)
+                                .Caption(Localizer["Аббревиатура"].Value);
+
+                            columns.Add()
+                       .DataField("cashType")
+                       .Visible(true)
+                       .Lookup(lookup => lookup
+                           .DataSource(new JS("baggagestorage.cashType"))
+                           .DisplayExpr("name")
+                           .ValueExpr("id"))
+                       .ValidationRules(r => r.AddRequired())
+                       .Caption(Localizer["Тип оплаты"].Value);
+                        })
+        )
+    </div>
+</div>
+
+<script>
+
+    $(function () {
+        baggagestorage.dxDataGrid = $("#gridBaggageStorage").dxDataGrid('instance');
+        baggagestorage.dxCustomers = $("#baggagestorage_selectBoxCustomer").dxSelectBox('instance');
+        baggagestorage.dxDataGrid.option("dataSource", []);
+
+        $('#portlet_baggagestorage .dx-toolbar').hide();
+        var a = $('#portlet_baggagestorage .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_baggagestorage .portlet-title');
+
+        $(window).resize(function () {
+            baggagestorage.dxDataGrid.option("height", parseInt($("#portlet_baggagestorage .height-as-parent").css('min-height')) - 63);
+        });
+    });
+
+</script>

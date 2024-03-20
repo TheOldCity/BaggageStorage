@@ -1,0 +1,244 @@
+﻿@inject IViewLocalizer Localizer
+@using BaggageStorage.Classes
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_storageplaces_grid";
+    var title = Localizer["Места хранения"].Value;
+}
+
+<script>
+    var storageplaces = {
+        dxCustomers: undefined,
+        dxBaggageStorage: undefined,
+        dxDataGrid: undefined,
+        baggageStorageArray: undefined,
+
+        grid_refresh: function () {
+            storageplaces.dxDataGrid.refresh();
+        },
+
+        closePortlet: function () {
+            $("#portlet_storageplaces").remove();
+            $("#tab-opened-portlet-storageplaces").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        customerChanged: function (e) {
+
+            var baggageStorageForLookup = new DevExpress.data.CustomStore({
+                load: function (loadOptions) {
+                    return $.getJSON("/api/storage?customerId=" + storageplaces.dxCustomers.option('value'), null,
+                        function (data, textStatus, jqXHR) {
+                            storageplaces.baggageStorageArray = data;
+
+                            storageplaces.dxBaggageStorage.option('dataSource', storageplaces.baggageStorageArray.data);
+
+                            storageplaces.dxDataGrid.option("dataSource", []);
+
+                            if (data.data.length == 1) {
+                                storageplaces.dxBaggageStorage.option('value', data.data[0].id);
+                            }
+                        });
+                },
+                byKey: function (key) {
+                    var result = '???';
+                    $.each(storageplaces.baggageStorageArray, function () {
+                        if (key == this.id)
+                            result = this;
+                    });
+                    return result;
+                }
+            });
+
+            baggageStorageForLookup.load();
+        },
+
+        baggageStorageChanged: function (e) {
+
+            storageplaces.dxDataGrid.option("dataSource", []);
+
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "onBeforeSend": function (query, request) {
+                        if (query == "insert" || query == "update") {
+                            var obj = JSON.parse(request.data.values);
+                            obj["storageId"] = storageplaces.dxBaggageStorage.option('value');
+                            request.data.values = JSON.stringify(obj);
+                        }
+                    },
+                    "loadParams": {
+                        "storageId": storageplaces.dxBaggageStorage.option('value'),
+                    },
+                    "loadUrl": "/api/storageplaces",
+                    "insertUrl": "/api/storageplaces",
+                    "updateUrl": "/api/storageplaces",
+                    "deleteUrl": "/api/storageplaces"
+                })
+            };
+
+            storageplaces.dxDataGrid.option("dataSource", store);
+            storageplaces.dxDataGrid.option('disabled', false);
+        },
+
+        groupsBeforeSend: function (query, request) {
+            if (query == "insert" || query == "update") {
+                var obj = JSON.parse(request.data.values);
+                obj["customerId"] = storageplaces.dxCustomers.option('value');
+                request.data.values = JSON.stringify(obj);
+            }
+        },
+    };
+</script>
+
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green portlet-header-icon"></i>
+            <span class="caption-subject font-main-color bold uppercase">@title</span>
+            <span style="display:inline-block">
+                @using (Html.BeginForm(FormMethod.Get, new
+                {
+                    id = "form",@*Class = "bordered",*@ style = "margin-bottom: 0px",
+                    action = "/api/baggagereceiving"
+                }))
+                {
+                    @(Html.DevExtreme().Form()
+                                           .ID("formControlsStoragePlaces")
+                                           .ColCount(2)
+                                           .Items(items =>
+                                           {
+
+                                               items.AddSimple().DataField("CustomerId")
+                                                .Label(l => l.Text(Localizer["Фирма"].Value))
+                                                .ValidationRules(v =>
+                                                {
+                                                    v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                })
+                                                .Editor(e => e
+                                                    .SelectBox()
+                                                    .Width(200)
+                                                    .ID("storageplaces_selectBoxCustomer")
+                                                    .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                                                    .DisplayExpr("name")
+                                                    .ValueExpr("id")
+                                                    .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                                    .OnSelectionChanged("storageplaces.customerChanged")
+                                                    .SearchEnabled(true)
+                                                    );
+
+                                               items.AddSimple().DataField("StorageId")
+                                                .Label(l => l.Text(Localizer["Камера хранения"].Value))
+                                                .ValidationRules(v =>
+                                                {
+                                                    v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                })
+                                                .Editor(e => e
+                                                    .SelectBox()
+                                                    .Width(200)
+                                                    .ID("storageplacesSelectBoxBaggageStorage")
+                                                    .DisplayExpr("name")
+                                                    .ValueExpr("id")
+                                                    .OnSelectionChanged("storageplaces.baggageStorageChanged")
+                                                    .SearchEnabled(true)
+                                                    );
+                                           })
+                                                        .LabelLocation(FormLabelLocation.Left)
+                                                        .ReadOnly(false)
+                                                        .ShowColonAfterLabel(true)
+                    )}
+            </span>
+        </div>
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:storageplaces.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:storageplaces.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+
+
+        @(Html.DevExtreme().DataGrid()
+                        .ID("gridStoragePlaces")
+                        .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                        .ShowBorders(true)
+                        .ShowRowLines(true)
+                        .OnCellPrepared("table_cellPrepared")
+                        .AllowColumnReordering(true)
+                        .Selection(s => s.Mode(SelectionMode.Single))
+                        .Grouping(grouping => grouping.AutoExpandAll(true))
+                        .SearchPanel(searchPanel => searchPanel.Visible(true))
+                        .GroupPanel(p => p.Visible(false).EmptyPanelText(Localizer["Панель группировки"].Value).AllowColumnDragging(true))
+                        .HoverStateEnabled(true)
+                        .RowAlternationEnabled(true)
+                        .Paging(paging => paging.Enabled(true))
+                        .StateStoring(s => s
+                            .Enabled(true)
+                            .Type(StateStoringType.LocalStorage)
+                            .StorageKey(storageKey)
+                        )
+                        .Pager(p => p
+                            .ShowInfo(true)
+                            .ShowNavigationButtons(true)
+                            .ShowPageSizeSelector(true)
+                            .AllowedPageSizes(new int[] { 25, 50, 100 })
+                        )
+                        .Editing(editing =>
+                        {
+                            editing.AllowAdding(true);
+                            editing.AllowDeleting(true);
+                            editing.Mode(GridEditMode.Form);
+                            editing.AllowUpdating(true);
+                        })
+                        .Columns(columns =>
+                        {
+                            columns.Add()
+                                .DataField("place")
+                                .DataType(GridColumnDataType.Number)
+                                .Visible(true)
+                                .Caption(Localizer["Место"].Value);
+
+                            columns.Add()
+                                .DataField("price")
+                                .Visible(true)
+                                .Caption(Localizer["Стоимость за сутки"].Value);
+
+                            columns.Add()
+                                .DataField("hourlyPrice")
+                                .Visible(true)
+                                .Caption(Localizer["Стоимость за час"].Value);
+                        })
+
+        )
+    </div>
+</div>
+
+<script>
+
+    $(function () {
+        storageplaces.dxCustomers = $("#storageplaces_selectBoxCustomer").dxSelectBox('instance');
+        storageplaces.dxBaggageStorage = $("#storageplacesSelectBoxBaggageStorage").dxSelectBox('instance');
+        storageplaces.dxDataGrid = $("#gridStoragePlaces").dxDataGrid('instance');
+        storageplaces.dxDataGrid.option('dataSource', []);
+        storageplaces.dxDataGrid.option('disabled', true);
+
+        $('#portlet_storageplaces .dx-toolbar').hide();
+        var a = $('#portlet_storageplaces .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_storageplaces .portlet-title');
+
+        $(window).resize(function () {
+            storageplaces.dxDataGrid.option("height", parseInt($("#portlet_storageplaces .height-as-parent").css('min-height')) - 63);
+        });
+    });
+
+</script>

@@ -1,0 +1,399 @@
+﻿@inject IViewLocalizer Localizer
+@using BaggageStorage.Classes
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_cashoperation_grid";
+    var title = Localizer["Кассовые операции"].Value;
+    var thisYear = DateTime.Now.Year;
+}
+
+<script>
+    var cashoperation = {
+        $storageIdSet: false,
+        dxCustomers: undefined,
+        dxBaggageStorage: undefined,
+        dxDateFrom: undefined,
+        dxDateTo: undefined,
+        dxCashOperation: undefined,
+        typeOperation: [{ id: 0, name: "@Localizer["Внесение денег"]" }, { id: 1, name: "@Localizer["Изъятие денег"]" }, { id: 2, name: "@Localizer["Оплата за багаж"]" }, { id: 3, name: "@Localizer["Доплата за багаж"]" }],
+        dxDataGrid: undefined,
+
+        grid_refresh: function(){
+            cashoperation.dxDataGrid.refresh();
+        },
+
+        closePortlet: function () {
+            $("#portlet_cashoperation").remove();
+            $("#tab-opened-portlet-cashoperation").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        table_cellPrepared: function (e) {
+            //if (e.rowType === "data" && e.column.dataField == 'clientId') {
+            //    e.cellElement.text(e.row.data.clientName);
+            //}
+
+            if (e.rowType === "data" && e.column.command === "edit") {
+                var isEditing = e.row.isEditing,
+                    $links = e.cellElement.find(".dx-link");
+
+                $links.text("");
+
+                if (isEditing) {
+                    $links.filter(".dx-link-save").addClass("dx-icon-save");
+                    $links.filter(".dx-link-cancel").addClass("dx-icon-revert");
+                } else {
+                    $links.filter(".dx-link-edit").addClass("dx-icon-edit");
+                    $links.filter(".dx-link-delete").addClass("dx-icon-trash");
+                    $links.filter(".dx-link-add").addClass("dx-icon-add");
+                }
+            }
+        },
+
+        baggageStorageChanged: function (e) {
+            cashoperation.dxDataGrid.option("dataSource", []);
+            var dateFrom = cashoperation.dxDateFrom.option('value');            
+            var dateTo = cashoperation.dxDateTo.option('value');
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "onBeforeSend": function (query, request) {
+                        if (query == "insert" || query == "update") {
+                            var obj = JSON.parse(request.data.values);
+                            obj["storageId"] = cashoperation.dxBaggageStorage.option('value');
+                            request.data.values = JSON.stringify(obj);
+                        }
+                    },
+                    "loadUrl": "/api/cashoperation",
+                    "loadParams": {
+                        "storageId": cashoperation.dxBaggageStorage.option('value'),
+                        "dateFrom": getFormattedDate(dateFrom),
+                        "dateTo": getFormattedDate(dateTo)
+                    },
+                    "insertUrl": "/api/cashoperation",
+                    "updateUrl": "/api/cashoperation",
+                    "deleteUrl": "/api/cashoperation"
+                })
+            };
+
+            cashoperation.dxDataGrid.option("dataSource", store);
+            cashoperation.dxDataGrid.option('disabled', false);
+
+        },
+
+        operation_RowInserted: function (e) {
+
+        },
+
+        customerChanged: function (e) {
+            cashoperation.dxBaggageStorage.reset();
+              var baggageStorageForLookup= new DevExpress.data.CustomStore({
+                load: function (loadOptions) {
+                    return $.getJSON("/api/storage?customerId=" + cashoperation.dxCustomers.option('value'), null,
+                        function (data, textStatus, jqXHR) {
+                            cashoperation.baggageStorageArray = data;
+
+                            cashoperation.dxBaggageStorage.option('dataSource', cashoperation.baggageStorageArray.data);
+
+                            if (data.data.length == 1) {
+                               cashoperation.dxBaggageStorage.option('value', data.data[0].id);
+                            }
+                        });
+                },
+                byKey: function (key) {
+                    var result = '???';
+                    $.each(cashoperation.baggageStorageArray, function () {
+                        if (key == this.id)
+                            result = this;
+                    });
+                    return result;
+                }
+            });
+            baggageStorageForLookup.load();
+        },
+
+        groupsBeforeSend: function (query, request) {
+                    if (query == "insert" || query == "update") {
+                        var obj = JSON.parse(request.data.values);
+                        obj["customerId"] = cashoperation.dxCustomers.option('value');
+                        request.data.values = JSON.stringify(obj);
+                    }
+        },
+
+        dateFromChanged: function (e) {
+                cashoperation.dxDataGrid.option("dataSource", []);
+                var dateFrom = cashoperation.dxDateFrom.option('value');            
+                var dateTo = cashoperation.dxDateTo.option('value');
+
+                var store = {
+                    "store": DevExpress.data.AspNet.createStore({
+                        "key": "id",
+                        "onBeforeSend": function (query, request) {
+                            if (query == "insert" || query == "update") {
+                                var obj = JSON.parse(request.data.values);
+                                obj["storageId"] = cashoperation.dxBaggageStorage.option('value');
+                                request.data.values = JSON.stringify(obj);
+                            }
+                        },
+                        "loadUrl": "/api/cashoperation",
+                        "loadParams": {
+                            "storageId": cashoperation.dxBaggageStorage.option('value'),
+                            "dateFrom": getFormattedDate(dateFrom),
+                            "dateTo": getFormattedDate(dateTo)
+                        },
+                        "insertUrl": "/api/cashoperation",
+                        "updateUrl": "/api/cashoperation",
+                        "deleteUrl": "/api/cashoperation"
+                    })
+                };
+
+                cashoperation.dxDataGrid.option("dataSource", store);
+                cashoperation.dxDataGrid.option('disabled', false);
+        },
+
+        dateToChanged: function (e) {
+                cashoperation.dxDataGrid.option("dataSource", []);
+                var dateFrom = cashoperation.dxDateFrom.option('value');            
+                var dateTo = cashoperation.dxDateTo.option('value');
+
+                var store = {
+                    "store": DevExpress.data.AspNet.createStore({
+                        "key": "id",
+                        "onBeforeSend": function (query, request) {
+                            if (query == "insert" || query == "update") {
+                                var obj = JSON.parse(request.data.values);
+                                obj["storageId"] = cashoperation.dxBaggageStorage.option('value');
+                                request.data.values = JSON.stringify(obj);
+                            }
+                        },
+                        
+                        "loadUrl": "/api/cashoperation",
+                        "loadParams": {
+                            "storageId": cashoperation.dxBaggageStorage.option('value'),
+                            "dateFrom": getFormattedDate(dateFrom),
+                            "dateTo": getFormattedDate(dateTo)
+                        },
+                        "insertUrl": "/api/cashoperation",
+                        "updateUrl": "/api/cashoperation",
+                        "deleteUrl": "/api/cashoperation"
+                    })
+                }
+
+                cashoperation.dxDataGrid.option("dataSource", store);
+                cashoperation.dxDataGrid.option('disabled', false);
+        }
+    };
+</script>
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green portlet-header-icon" style="top: 8px;position: relative;"></i>
+                <span class="caption-subject font-main-color bold uppercase" style="margin-top: 8px; margin-right:20px; margin-left:10px;">@title</span>
+                <span style="display:inline-block">
+                @using (Html.BeginForm(FormMethod.Get, new
+                {
+                    id = "form", @*Class = "bordered",*@ style = "margin-bottom: 0px",action = "/api/baggagereceiving"}))
+                {
+                @(Html.DevExtreme().Form()
+                               .ID("formControlsCashOperation")
+                               .ColCount(8)
+                               .Items(items =>
+                               {
+
+                               items.AddSimple().DataField("CustomerId")
+                                    .Label(l => l.Text(Localizer["Фирма"].Value))
+                                    .ValidationRules(v =>
+                                    {
+                                        v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                    })
+                                    .Editor(e => e
+                                        .SelectBox()
+                                        .Width(150)
+                                        .ID("cashoperation_selectBoxCustomer")
+                                        .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                                        .DisplayExpr("name")
+                                        .ValueExpr("id")
+                                        .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                        .OnSelectionChanged("cashoperation.customerChanged")
+                                        .SearchEnabled(true)
+                                        );
+
+                               items.AddSimple().DataField("StorageId")
+                                    .Label(l => l.Text(Localizer["Камера хранения"].Value))
+                                    .ValidationRules(v =>
+                                    {
+                                        v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                    })
+
+                                    .Editor(e => e
+                                        .SelectBox()
+                                        .Width(150)
+                                        .ID("cashoperationsSelectBoxBaggageStorage")
+                                        .DisplayExpr("name")
+                                        .ValueExpr("id")
+                                        .OnSelectionChanged("cashoperation.baggageStorageChanged")
+                                        .SearchEnabled(true)
+                                    );
+
+                               items.AddSimple().DataField("DateFrom")
+                                   .Label(l => l.Text(Localizer["С"].Value))
+                                   .Editor(e => e
+                                       .DateBox()
+                                       .Width(120)
+                                       .ID("cashoperationsSelectBoxDateFrom")
+                                       .OnValueChanged("cashoperation.dateFromChanged")
+                                       .Value(new DateTime(thisYear, 1, 1, 0, 0, 0))
+                                   );
+
+                                items.AddSimple().DataField("DateTo")
+                                    .Label(l => l.Text(Localizer["По"].Value))
+                                    .Editor(e => e
+                                        .DateBox()
+                                        .Width(120)
+                                        .ID("cashoperationsSelectBoxDateTo")
+                                        .OnValueChanged("cashoperation.dateToChanged")
+                                        .Value(new DateTime(thisYear, 12, 31, 23, 59, 59))
+                                    );
+                                    @*items.AddSimple().Template(@<text>
+                                            @(Html.DevExtreme().Button()
+                                                    .Text(Localizer["ПОЛУЧИТЬ"].Value)
+                                                    .Type(ButtonType.Success)
+                                                    .UseSubmitBehavior(true)
+                                            )
+                                            </text>);*@
+                               })
+                                            .LabelLocation(FormLabelLocation.Left)
+                                            .ReadOnly(false)
+                                            .ShowColonAfterLabel(true)
+    )}
+            </span>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:cashoperation.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:cashoperation.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:5px;">
+
+        <input type="hidden" id="cashoperation-view-name" value="@viewFileName" />
+        <input type="hidden" id="cashoperation-storage-name" value='["@storageKey"]' />
+
+        @(Html.DevExtreme().DataGrid()
+                .ID("gridCashOperation")
+                .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                .ShowBorders(true)
+                .ShowRowLines(true)
+                .OnCellPrepared("cashoperation.table_cellPrepared")
+                .Selection(s => s.Mode(SelectionMode.Single))
+                .AllowColumnReordering(true)
+                .GroupPanel(p => p.Visible(true).EmptyPanelText(Localizer["Панель группировки"].Value).AllowColumnDragging(true))
+                .Grouping(grouping => grouping.AutoExpandAll(true))
+                .SearchPanel(searchPanel => searchPanel.Visible(true))
+                .OnRowInserted("cashoperation.operation_RowInserted")
+                .HoverStateEnabled(true)
+                .RowAlternationEnabled(true)
+                .Paging(paging => paging.Enabled(true))
+                .FilterRow(filterRow => filterRow
+                    .Visible(true)
+                    .ApplyFilter(GridApplyFilterMode.Auto)
+                )
+                .StateStoring(s => s
+                    .Enabled(true)
+                    .Type(StateStoringType.LocalStorage)
+                    .StorageKey(storageKey)
+                )
+                .Pager(p => p
+                    .ShowInfo(true)
+                    .ShowNavigationButtons(true)
+                    .ShowPageSizeSelector(true)
+                    .AllowedPageSizes(new int[] { 25, 50, 100 })
+                )
+                .Editing(editing =>
+                {
+                    editing.AllowAdding(true);
+                    //editing.AllowDeleting(true);
+                    editing.Mode(GridEditMode.Form);
+                    //editing.AllowUpdating(true);
+                })
+
+                .Columns(columns =>
+                {
+                    columns.Add()
+                        .DataField("operation")
+                        .Visible(true)
+                        .Caption(Localizer["Операции"].Value)
+                        .Lookup(lookup => lookup
+                            .DataSource(new JS("cashoperation.typeOperation"))
+                            .DisplayExpr("name")
+                            .ValueExpr("id"))
+                        .ValidationRules(r => r.AddRequired())
+                        .GroupIndex(0);
+
+                    columns.Add()
+                        .DataField("date")
+                        .Visible(true)
+                        .DataType(GridColumnDataType.DateTime)
+                        .Format("dd.MM.yyyy HH:mm")
+                        .Caption(Localizer["Дата"].Value)
+                        .ValidationRules(r => r.AddRequired())
+                        .AllowEditing(true);
+
+                    columns.Add()
+                        .DataField("amount")
+                        .Visible(true)
+                        .DataType(GridColumnDataType.Number)
+                        .Alignment(HorizontalAlignment.Right)
+                        .Caption(Localizer["Сумма"].Value);
+
+                })
+                .SortByGroupSummaryInfo(i => i.Add().SummaryItem("count"))
+                .Summary(s => s.GroupItems(g =>
+                {
+                    g.Add().Column("amount")
+                        .DisplayFormat("Total: {0}")
+                        .AlignByColumn(true)
+                        .ShowInColumn("amount")
+                        .SummaryType(SummaryType.Sum)
+                        .ValueFormat(f => f.Type(Format.FixedPoint)
+                        .Precision(2));
+                }))
+
+               )
+    </div>
+</div>
+
+<script>
+
+    $(function () {
+        cashoperation.dxDataGrid = $("#gridCashOperation").dxDataGrid('instance');
+        cashoperation.dxBaggageStorage=$("#cashoperationsSelectBoxBaggageStorage").dxSelectBox('instance');
+        cashoperation.dxCustomers = $("#cashoperation_selectBoxCustomer").dxSelectBox('instance');
+        cashoperation.dxCashOperation = $("#gridCashOperation").dxDataGrid('instance');
+        cashoperation.dxDateFrom = $("#cashoperationsSelectBoxDateFrom").dxDateBox('instance');
+        cashoperation.dxDateTo = $("#cashoperationsSelectBoxDateTo").dxDateBox('instance');
+        cashoperation.dxDataGrid.option('disabled', true);
+        cashoperation.dxDataGrid.option('dataSource', []);
+
+        //$('#portlet_cashoperation .dx-toolbar').hide();
+        //var a = $('#portlet_cashoperation .dx-toolbar-after').detach();
+        //$(a).appendTo('#portlet_cashoperation .portlet-title');
+
+        $(window).resize(function () {
+            cashoperation.dxDataGrid.option("height", parseInt($("#portlet_cashoperation .height-as-parent").css('min-height')) - 63);
+        });
+    });
+
+</script>

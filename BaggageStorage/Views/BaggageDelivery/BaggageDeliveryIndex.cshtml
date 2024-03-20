@@ -1,0 +1,494 @@
+﻿@inject IViewLocalizer Localizer
+@using BaggageStorage.Classes
+@using BaggageStorage.Controllers
+
+@model BaggageDeliveryController.DateRange;
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_baggagedelivery_grid";
+    var title = Localizer["Выдача багажа"].Value;
+    var title2 = Localizer["ВНИМАНИЕ"].Value;
+}
+
+<script>
+
+    var baggagedelivery = {
+        rowIndex: undefined,
+        dxCustomers: undefined,
+        dxBaggageStorage: undefined,
+        dxDataGrid: undefined,
+        baggageStorageArray: undefined,
+
+        setToPayCellValue: function (e) {
+            if (e.supposedDateOut == '0001-01-01T00:00:00') {
+                return e.toPay;
+            }
+        },
+
+        grid_refresh: function () {
+            baggagedelivery.dxDataGrid.refresh();
+        },
+
+        closePortlet: function () {
+            $("#portlet_baggagedelivery").remove();
+            $("#tab-opened-portlet-baggagedelivery").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        baggageStorageChanged: function (e) {
+
+            if (baggagedelivery.dxBaggageStorage.option('value') == null || baggagedelivery.dxBaggageStorage.option('value') === 'undefined')
+            return;
+
+            baggagedelivery.dxDataGrid.option("dataSource", []);
+
+            var data = $("#formControlsBaggageDelivery").dxForm('instance').option('formData');
+            
+            var store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "onBeforeSend": function (query, request) {
+                        if (query == "insert" || query == "update") {
+                            var obj = JSON.parse(request.data.values);
+                            obj["storageId"] = baggagedelivery.dxBaggageStorage.option('value');
+                            request.data.values = JSON.stringify(obj);
+                        }
+                    },
+                    "loadParams": {
+                        "storageId": baggagedelivery.dxBaggageStorage.option('value'),
+                        "dateFrom": getFormattedDate(data.DateFrom),
+                        "dateTo": getFormattedDate(data.DateTo),
+                    },
+                    "loadUrl": "/api/baggagedelivery", "insertUrl": "/api/baggagedelivery", "updateUrl": "/api/baggagedelivery", "deleteUrl": "/api/baggagedelivery"
+                })
+            };
+
+            baggagedelivery.dxDataGrid.option("dataSource", store);
+            baggagedelivery.dxDataGrid.option('disabled', false);
+
+            store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "loadParams": {
+                        "customerId": baggagedelivery.dxCustomers.option('value'),
+                    },
+                    "loadUrl": "/api/user"
+                })
+            };
+
+            baggagedelivery.dxDataGrid.columnOption('userInId', 'lookup.dataSource', store);
+
+            store = {
+                "store": DevExpress.data.AspNet.createStore({
+                    "key": "id",
+                    "loadParams": {
+                        "storageId": baggagedelivery.dxBaggageStorage.option('value'),
+                    },
+                    "loadUrl": "/api/storageplaces"
+                })
+            };
+
+            baggagedelivery.dxDataGrid.columnOption('storagePlaceId', 'lookup.dataSource', store);
+
+            baggagedelivery.dxDataGrid.option('disabled', false);
+        },
+
+        customerChanged: function (e) {
+
+            baggagedelivery.dxDataGrid.option("dataSource", []);
+
+            var baggageStorageForLookup = new DevExpress.data.CustomStore({
+                load: function (loadOptions) {
+                    return $.getJSON("/api/baggagestorage?customerId=" + baggagedelivery.dxCustomers.option('value'), null,
+                        function (data, textStatus, jqXHR) {
+                            baggagedelivery.baggageStorageArray = data;
+
+                            baggagedelivery.dxBaggageStorage.option('dataSource', baggagedelivery.baggageStorageArray.data);
+
+                            if (data.data.length == 1) {
+                                baggagedelivery.dxBaggageStorage.option('value', data.data[0].id);
+                            }
+                        });
+                },
+                byKey: function (key) {
+                    var result = '???';
+                    $.each(baggagedelivery.baggageStorageArray, function () {
+                        if (key == this.id)
+                            result = this;
+                    });
+                    return result;
+                }
+            });
+
+            baggageStorageForLookup.load();
+        },
+
+        cellTemplate: function (container, options) {
+            var k = $("#gridBaggageDelivery").dxDataGrid('instance').cellValue(options.rowIndex, "userOutId");
+            if (k == null) {
+                $("<div style = 'margin-left: 17%' />").dxButton({
+                    text: "Выдать",
+                    type: "danger",
+                    onClick: function (e) {
+                        baggagedelivery.rowIndex = options.rowIndex;
+                        var grid = $("#gridBaggageDelivery").dxDataGrid('instance');
+                        var value = grid.cellValue(options.rowIndex, "toPay");
+                        if (value == 0) {
+                            $("#popup_whileNoDebt").dxPopup("show")
+                        }
+                        else {
+                            $("#popup_whileDebt").dxPopup("show")
+                        }
+                    }
+                }).appendTo(container);
+            }
+            else {
+                $("<p style = 'color: green; margin-left: 17%; margin-bottom: 10%; margin-top: 10%; font-weight: bold' />").text("Багаж выдан!").appendTo(container);
+            }
+        },
+
+        onCellPrepared: function (e) {
+            if (e.column.dataField == "toPay") {
+                if (e.value != "0") {
+                    if (e.rowIndex >= 0) {
+                        e.cellElement.css('color', "red");
+                        e.cellElement.css('font-weight', 'bold');
+                    }
+                }
+            }
+        },
+
+        customizeTextDateOut: function (e) {
+
+            if (moment(e.value).format('DD.MM.YYYY') == '01.01.1901') {
+                e.valueText = '';
+            }
+            return e.valueText;
+        },
+
+        popupDebtTemplate: function (e) {
+            e.append($("<p style = 'color:#ff0000' />").text("Имеется задолженность за неоплаченный период размером в леев. После оплаты клиентом суммы нажмите ОК."));
+            e.append($("<div style = 'float: left; margin-bottom: 10px' />").dxButton({
+                text: "ОК",
+                width: 150,
+                onClick: function () {
+
+                    var movId = $("#gridBaggageDelivery").dxDataGrid('instance').cellValue(baggagedelivery.rowIndex, "id");
+                    var amount = $("#gridBaggageDelivery").dxDataGrid('instance').cellValue(baggagedelivery.rowIndex, "toPay");
+                    $.ajax({
+                        type: "PUT",
+                        url: "/api/baggagedelivery/put",
+                        data: 'key=' + movId,
+                    });
+                    $.ajax({
+                        type: "POST",
+                        url: "/api/baggagedelivery/post?key=" + movId + "&toPay=" + amount,
+                    });
+                    var prodName = 'Plata p-u bagaj prelungit';
+                    var prodCode = 101;
+                    saleFiscalPrinter(prodName, prodCode, amount, movId);
+                    $("#popup_whileDebt").dxPopup('instance').hide();
+                    baggagedelivery.dxDataGrid.refresh();
+                }
+            }));
+            e.append($("<div style = 'float: right; margin-bottom: 10px' />").dxButton({
+                text: "Отмена",
+                width: 150,
+                onClick: function () { $("#popup_whileDebt").dxPopup('instance').hide() }
+            }));
+        },
+
+        popupNoDebtTemplate: function (e) {
+            e.append($("<p />").text("Подтвердите выдачу багажа"));
+            e.append($("<div style = 'float: left; margin-bottom: 10px' />").dxButton({
+                text: "ОК",
+                width: 150,
+                onClick: function () {
+                    var movId = $("#gridBaggageDelivery").dxDataGrid('instance').cellValue(baggagedelivery.rowIndex, "id");
+                    $.ajax({
+                        type: "PUT",
+                        url: "/api/baggagedelivery/put",
+                        data: 'key=' + movId,
+                    })
+                        .done(function () {
+                            $("#popup_whileNoDebt").dxPopup('instance').hide();
+                            baggagedelivery.dxDataGrid.refresh();
+                        });
+                }
+            }));
+            e.append($("<div style = 'float: right; margin-bottom: 10px' />").dxButton({
+                text: "Отмена",
+                width: 150,
+                onClick: function () { $("#popup_whileNoDebt").dxPopup('instance').hide() }
+            }));
+        },
+    }
+
+    function getFormattedDate(date) {
+        var year = date.getFullYear();
+
+        var month = (1 + date.getMonth()).toString();
+        month = month.length > 1 ? month : '0' + month;
+
+        var day = date.getDate().toString();
+        day = day.length > 1 ? day : '0' + day;
+
+        return year + "-" + month + '-' + day;
+    }
+</script>
+
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green portlet-header-icon"></i>
+            <span class="caption-subject font-main-color bold uppercase">@title</span>
+            <span style="display:inline-block">
+                @using (Html.BeginForm(FormMethod.Get, new
+                {
+                    id = "form",@*Class = "bordered",*@ style = "margin-bottom: 0px",
+                    action = "/api/baggagedelivery"
+                }))
+                {
+                    @(Html.DevExtreme().Form()
+                                                 .ID("formControlsBaggageDelivery")
+                                                 .ColCount(4)
+                                                 .Items(items =>
+                                                 {
+
+                                                     items.AddSimple().DataField("CustomerId")
+                                                         .Label(l => l.Text(Localizer["Фирма"].Value))
+                                                         .ValidationRules(v =>
+                                                         {
+                                                             v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                         })
+                                                         .Editor(e => e
+                                                             .SelectBox()
+                                                             .Width(200)
+                                                             .ID("baggagedeliverySelectBoxCustomer")
+                                                             .DataSource(d => d.WebApi().RouteName("CustomerApi").Key("id").LoadAction("Get"))
+                                                             .DisplayExpr("name")
+                                                             .ValueExpr("id")
+                                                             .Value(User.Identity.GetCustomerId()) // по умолчанию устанавливаем customerId к которому принадлежит пользователь
+                                                             .OnSelectionChanged("baggagedelivery.customerChanged")
+                                                             .SearchEnabled(true)
+                                                         );
+
+                                                     items.AddSimple().DataField("StorageId")
+                                                     .Label(l => l.Text(Localizer["Камера хранения"].Value))
+                                                     .ValidationRules(v =>
+                                                     {
+                                                         v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                     })
+
+                                                     .Editor(e => e
+                                                         .SelectBox()
+                                                         .Width(200)
+                                                         .ID("baggagedeliverySelectBoxBaggageStorage")
+                                                         .DisplayExpr("name")
+                                                         .ValueExpr("id")
+                                                         .OnSelectionChanged("baggagedelivery.baggageStorageChanged")
+                                                         .SearchEnabled(true)
+                                                     );
+
+                                                     items.AddSimple().DataField("DateFrom").Label(l => l.Text(Localizer["Нач. дата приема"].Value))
+                                                     .ValidationRules(v =>
+                                                     {
+                                                         v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                     })
+                                                     .Editor(e => e.DateBox().ID("edDateFrom").DisplayFormat("dd.MM.yyyy").Value(Model.DateFrom).OnValueChanged("baggagedelivery.baggageStorageChanged"));
+
+                                                     items.AddSimple().DataField("DateTo").Label(l => l.Text(Localizer["Кон. дата приема"].Value))
+                                                     .ValidationRules(v =>
+                                                     {
+                                                         v.AddRequired().Message(Localizer["Обязательное поле"].Value);
+                                                     })
+                                                     .Editor(e => e.DateBox().ID("edDateTo").DisplayFormat("dd.MM.yyyy").Value(Model.DateTo).OnValueChanged("baggagedelivery.baggageStorageChanged"));
+                                                 })
+                                            .LabelLocation(FormLabelLocation.Left)
+                                            .ReadOnly(false)
+                                            .ShowColonAfterLabel(true)
+                    )}
+            </span>
+        </div>
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggagedelivery.grid_refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:baggagedelivery.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:5px;">
+
+        <input type="hidden" id="baggagedelivery-view-name" value="@viewFileName" />
+        <input type="hidden" id="baggagedelivery-storage-name" value='["@storageKey"]' />
+
+        @(Html.DevExtreme().DataGrid()
+                                                        .ID("gridBaggageDelivery")
+                                                        .GroupPanel(gr => gr.Visible(false))
+                                                        .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                                                        .ShowBorders(true)
+                                                        .AllowColumnReordering(true)
+                                                        .ShowRowLines(true)
+                                                        .Selection(s => s.Mode(SelectionMode.Single))
+                                                        .SearchPanel(searchPanel => searchPanel.Visible(true))
+                                                        .GroupPanel(p => p.Visible(true).EmptyPanelText(Localizer["Панель группировки"].Value).AllowColumnDragging(true))
+                                                        .OnCellPrepared("baggagedelivery.onCellPrepared")
+                                                        .HoverStateEnabled(true)
+                                                        .RowAlternationEnabled(true)
+                                                        .AllowColumnResizing(true)
+                                                        .AllowColumnReordering(true)
+                                                        //.ColumnAutoWidth(true)
+                                                        .Paging(paging => paging.Enabled(true))
+                                                        .FilterRow(filterRow => filterRow
+                                                            .Visible(true)
+                                                            .ApplyFilter(GridApplyFilterMode.Auto)
+                                                            )
+                                                        .StateStoring(s => s
+                                                            .Enabled(true)
+                                                            .Type(StateStoringType.LocalStorage)
+                                                            .StorageKey(storageKey)
+                                                        )
+                                                        .Pager(p => p
+                                                            .ShowInfo(true)
+                                                            .ShowNavigationButtons(true)
+                                                            .ShowPageSizeSelector(true)
+                                                            .AllowedPageSizes(new int[] { 25, 50, 100 })
+                                                        )
+                                                        .Editing(editing =>
+                                                        {
+                                                            editing.AllowAdding(false);
+                                                            editing.AllowDeleting(false);
+                                                            editing.Mode(GridEditMode.Form);
+                                                            editing.AllowUpdating(false);
+                                                        })
+                                                        .Columns(columns =>
+                                                        {
+                                                            columns.Add()
+                                                                    .DataField("id")
+                                                                    .Visible(true)
+                                                                    .Width(50)
+                                                                    .Caption(Localizer["ID"].Value)
+                                                                    .DataType(GridColumnDataType.String);
+                                                            columns.Add()
+                                                                    .DataField("firstName")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Фамилия и имя"].Value);
+                                                            columns.Add()
+                                                                    .DataField("phone")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Номер телефона"].Value)
+                                                                    .DataType(GridColumnDataType.String);
+                                                            columns.Add()
+                                                                    .DataField("userInId")
+                                                                    .Visible(true)
+                                                                    .Lookup(lookup => lookup
+                                                                        .DataSource(d => d.WebApi().RouteName("UserApi").LoadAction("Get").Key("id").LoadParams(new { customerId = "1353db20-ce11-4f6d-8f09-756c9781bcb2" }))
+                                                                        .DisplayExpr("name")
+                                                                        .ValueExpr("id"))
+                                                                        .Caption(Localizer["Кем был принят багаж"].Value);
+                                                            columns.Add()
+                                                                    .DataField("userOutId")
+                                                                    .Visible(false)
+                                                                    .Caption(Localizer["Кем был выдан багаж"].Value)
+                                                                    .DataType(GridColumnDataType.String);
+                                                            columns.Add()
+                                                                    .DataField("place")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Место"].Value)
+                                                                    .DataType(GridColumnDataType.String);
+                                                            columns.Add()
+                                                                    .DataField("dateIn")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Дата принятия"].Value)
+                                                                    .DataType(GridColumnDataType.DateTime)
+                                                                    .Format("dd.MM.yyyy HH:mm");
+                                                            columns.Add()
+                                                                    .DataField("amountOfDays")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Кол-во дней"].Value);
+                                                            columns.Add()
+                                                                    .DataField("amountOfHour")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Кол-во часов"].Value);
+                                                            columns.Add()
+                                                                    .DataField("toPay")
+                                                                    .CalculateCellValue("baggagedelivery.setToPayCellValue")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Доплатить (MDL)"].Value);
+                                                            columns.Add()
+                                                                    .DataField("dateOut")
+                                                                    .Visible(true)
+                                                                    .Caption(Localizer["Дата выдачи"].Value)
+                                                                    .DataType(GridColumnDataType.DateTime)
+                                                                    .CustomizeText("baggagedelivery.customizeTextDateOut")
+                                                                    .Format("dd.MM.yyyy HH:mm");
+
+                                                            columns.Add()
+                                                                    .DataField("bt")
+                                                                    .CellTemplate(new JS("baggagedelivery.cellTemplate"))
+                                                                    .Caption(Localizer[""].Value);
+
+                                                        })
+                                                            .DataSource(ds => ds.WebApi().RouteName("BaggageDeliveryApi").Key("id")
+                                                                .LoadAction("Get")
+                                                                .DeleteAction("Delete")
+                                                                .UpdateAction("Put"))
+        )
+        @(Html.DevExtreme().Popup()
+                                                .ID("popup_whileNoDebt")
+                                                .Title(@title2)
+                                                .Width(400)
+                                                .Height(null)
+                                                .ContentTemplate(new JS("baggagedelivery.popupNoDebtTemplate"))
+        )
+
+        @(Html.DevExtreme().Popup()
+                                                .ID("popup_whileDebt")
+                                                .Title(@title2)
+                                                .Width(400)
+                                                .Height(null)
+                                                .ContentTemplate(new JS("baggagedelivery.popupDebtTemplate"))
+        )
+
+    </div>
+</div>
+
+<script>
+
+    $(function () {
+        baggagedelivery.dxBaggageStorage = $("#baggagedeliverySelectBoxBaggageStorage").dxSelectBox('instance');
+        baggagedelivery.dxCustomers = $("#baggagedeliverySelectBoxCustomer").dxSelectBox('instance');
+        baggagedelivery.dxDataGrid = $("#gridBaggageDelivery").dxDataGrid('instance');
+        baggagedelivery.dxDataGrid.option('dataSource', []);
+        baggagedelivery.dxDataGrid.option('disabled', true);
+    });
+
+    function getFormattedDate(date) {
+        var year = date.getFullYear();
+
+        var month = (1 + date.getMonth()).toString();
+        month = month.length > 1 ? month : '0' + month;
+
+        var day = date.getDate().toString();
+        day = day.length > 1 ? day : '0' + day;
+
+        return year + "-" + month + '-' + day;
+    }
+
+    $(function () {
+
+        $(window).resize(function () {
+            baggagedelivery.dxDataGrid.option("height", parseInt($("#portlet_baggagedelivery .height-as-parent").css('min-height')) - 63);
+        });
+    });
+
+</script>

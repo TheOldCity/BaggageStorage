@@ -1,0 +1,62 @@
+@using Microsoft.AspNetCore.Builder
+@using Microsoft.AspNetCore.Http.Features
+@using Microsoft.AspNetCore.Localization
+@using Microsoft.Extensions.Options
+@using Microsoft.AspNetCore.Mvc.Localization;
+@using System.Collections;
+
+@inject IViewLocalizer Localizer
+@inject IOptions<RequestLocalizationOptions> LocOptions
+@{
+    var requestCulture = Context.Features.Get<IRequestCultureFeature>();
+    var cultureItems = LocOptions.Value.SupportedUICultures
+        .Select(c => new  { Value = c.TwoLetterISOLanguageName, Name=c.NativeName })
+        .ToList();
+
+    List<string> langsValues = new List<string>();
+    List<string> langsName= new List<string>();
+} 
+
+
+@foreach (var item in cultureItems)
+{
+    if (!item.Value.ToUpper().Equals(requestCulture.RequestCulture.Culture.TwoLetterISOLanguageName.ToUpper()))
+    {
+        var s = item.Name.First().ToString().ToUpper() + item.Name.Substring(1);
+
+        langsValues.Add(item.Value);
+        langsName.Add(s);
+    }
+}
+
+<script>
+    function changeLang(lang) {
+        $("#culture").val(lang);
+        $("#selectLangForm").submit();
+    }
+</script>
+
+<div class="dropdown dropdown-language" style="display: inline-block;position: relative;top: -30px;">
+    <a href="javascript:;" class="dropdown-toggle" data-toggle="dropdown" data-hover="dropdown" data-close-others="true" aria-expanded="true" style="color:#aeb2c4;text-decoration:none">
+        <span class="langname"> @requestCulture.RequestCulture.Culture.TwoLetterISOLanguageName.ToUpper() </span>
+        <i class="fa fa-angle-down"></i>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-default" style="min-width:75px">
+        <li>
+            <a href="javascript:changeLang('@langsValues.ElementAt(0)');">
+                @langsName.ElementAt(0)
+            </a>
+        </li>
+        <li>
+            <a href="javascript:changeLang('@langsValues.ElementAt(1)');">
+                @langsName.ElementAt(1)
+            </a>
+        </li>
+    </ul>
+</div>
+
+<!--Change Lang-->
+<form id="selectLangForm" style="display:none;" asp-controller="Home" asp-action="SetLanguage" asp-route-returnUrl="@Context.Request.Path" method="post" role="form">
+    <input type="hidden" id="culture" name="culture" />
+</form>
+

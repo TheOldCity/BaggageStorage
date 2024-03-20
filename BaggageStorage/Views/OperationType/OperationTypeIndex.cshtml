@@ -1,0 +1,125 @@
+﻿@inject IViewLocalizer Localizer
+
+@{
+    Layout = null;
+
+    var controllerName = this.ViewContext.RouteData.Values["controller"].ToString();
+    var actionName = this.ViewContext.RouteData.Values["action"].ToString();
+    var viewFileName = String.Format("/View/{0}/{1}.cshtml", controllerName, actionName);
+    var storageKey = "storage_operationtype_grid";
+    var title = Localizer["Группы операций"].Value;
+}
+
+<script>
+    var operationType = {
+        dxGrid: undefined,
+
+        closePortlet: function () {
+            $("#portlet_operationtype").remove();
+            $("#tab-opened-portlet-operationtype").remove();
+            $(".a-tab-opened-portlet:first").click();
+        },
+
+        grid_ContentReady: function () {
+            operationType.dxGrid.focus(operationType.dxGrid.getCellElement(0, 'name'));
+        },
+
+        grid_CellClick: function (e) {
+            if ($(e.cellElement).parent().index() <= operationType.dxGrid.getVisibleRows().length - 1 && operationType.dxGrid.getController("editing").isEditing() == false)
+                operationType.dxGrid.focus(e.cellElement);
+        },
+
+        grid_Refresh: function () {
+            $("#gridOperationTypeContainer").dxDataGrid('instance').refresh();
+        }
+    };
+</script>
+
+<div class="portlet light portlet-fit full-height-content full-height-content-scrollable height-as-parent">
+    <div class="portlet-title custom-title" style="margin-bottom:0px;">
+        <div class="caption">
+            <i class=" icon-layers font-green portlet-header-icon"></i>
+            <span class="caption-subject font-main-color bold uppercase">@title</span>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:operationType.grid_Refresh();">
+                <i class="icon-refresh"></i>
+            </a>
+            <a class="btn btn-circle btn-icon-only btn-default fullscreen" href="javascript:;" data-original-title="" title=""> </a>
+            <a class="btn btn-circle btn-icon-only btn-default" href="javascript:operationType.closePortlet();">
+                <i class="dx-icon-close"></i>
+            </a>
+        </div>
+    </div>
+
+    <div class="portlet-body" style="margin-top:0px;height:auto;padding:0px;">
+        <div class="full-height-content-body">
+
+            <input type="hidden" id="operationtype-view-name" value="@viewFileName" />
+            <input type="hidden" id="operationtype-storage-name" value='["@storageKey"]' />
+
+            @(Html.DevExtreme().DataGrid()
+                .ID("gridOperationTypeContainer")
+                .Sorting(sorting => sorting.Mode(GridSortingMode.Multiple))
+                .ShowBorders(true)
+                .ShowRowLines(true)
+                .OnCellPrepared("table_cellPrepared")
+                .Selection(s => s.Mode(SelectionMode.Single))
+                .OnCellClick("operationType.grid_CellClick")
+                .OnContentReady("operationType.grid_ContentReady")
+                .Export(e => e
+                    .Enabled(true)
+                    .FileName("OperationTypes"))
+                .HoverStateEnabled(true)
+                .RowAlternationEnabled(true)
+                .Paging(paging => paging.Enabled(true))
+                .StateStoring(s => s
+                    .Enabled(true)
+                    .Type(StateStoringType.LocalStorage)
+                    .StorageKey(storageKey)
+                )
+                .Pager(p => p
+                    .ShowInfo(true)
+                    .ShowNavigationButtons(true)
+                    .ShowPageSizeSelector(true)
+                    .AllowedPageSizes(new int[] { 25, 50, 100 })
+                )
+                .Editing(editing =>
+                {
+                    editing.AllowAdding(true);
+                    editing.AllowDeleting(true);
+                    editing.Mode(GridEditMode.Row);
+                    editing.AllowUpdating(true);
+                })
+                .Columns(columns =>
+                {
+                    columns.Add()
+                        .DataField("name")
+                        .Caption(Localizer["Название группы"].Value);
+                })
+                .DataSource(d => d.WebApi().RouteName("OperationTypeApi").Key("id")
+                    .LoadAction("Get")
+                    .DeleteAction("Delete")
+                    .InsertAction("Post")
+                    .UpdateAction("Put"))
+            )
+        </div>
+    </div>
+</div>
+
+<script>
+    $(function () {
+
+        operationType.dxGrid = $("#gridOperationTypeContainer").dxDataGrid('instance');
+
+        $('#portlet_operationtype .dx-toolbar').hide();
+        var a = $('#portlet_operationtype .dx-toolbar-after').detach();
+        $(a).appendTo('#portlet_operationtype .portlet-title');
+
+        $(window).resize(function () {
+            operationType.dxGrid.option("height", parseInt($("#portlet_operationtype .height-as-parent").css('min-height')) - 58);
+        });
+    });
+</script>
+
